@@ -5,7 +5,7 @@
 
 ## Why DuckDB Static Library?
 
-Running DuckDB in serverless environments can be challenging due to initialization overhead and dependency management. This library solves these pain points by providing a strictly bundled static build.
+Running [DuckDB](https://duckdb.org/) in serverless environments can be challenging due to initialization overhead and dependency management. This library solves these pain points by providing a strictly bundled static build.
 
 ### ️ Blazing Fast Cold Starts
 **Cold start time is critical.**
@@ -48,3 +48,9 @@ You don't need to build from source. simply:
 
 ## Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+
+## Disclaimer
+
+This project is an independent open-source initiative and is **not** affiliated with, endorsed by, or associated with the DuckDB Foundation or DuckDB Labs.
+**DuckDB** is a trademark of the **DuckDB Foundation**. All other trademarks, logos, and service marks used in this repository are the property of their respective owners.
