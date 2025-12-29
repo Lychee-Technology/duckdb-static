@@ -2,7 +2,8 @@ name: Build DuckDB Bundle on Amazon Linux 2023
 
 on:
   push:
-    branches: [ main ]
+    tags:        
+      - '*'
 
 permissions:
   contents: write
