@@ -1,9 +1,6 @@
 name: Build DuckDB Bundle on Amazon Linux 2023
 
-on:
-  push:
-    tags:        
-      - '*'
+on: push
 
 permissions:
   contents: write
@@ -26,12 +23,11 @@ jobs:
             python3 -y
       
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set duckdb_version variable
         run: |
-          echo "Setting DUCKDB_VER variable, current dir is '$(pwd)'"
-          ls -lah
+          echo "Setting DUCKDB_VER variable"
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
 
@@ -60,7 +56,8 @@ jobs:
           popd
 
       - name: Create GitHub Release and upload zip
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
         with:
           files: duckdb/libduckdb_bundle.zip
         env:
