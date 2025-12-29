@@ -1,0 +1,66 @@
+name: Build DuckDB Bundle on Amazon Linux 2023
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: suremate
+    container:
+      image: public.ecr.aws/amazonlinux/amazonlinux:2023
+
+    steps:
+      - name: Install basic tools
+        run: |
+          dnf update -y
+          dnf install --allowerasing \
+            tar gzip git cmake \
+            make gcc gcc-c++ \
+            zip unzip curl \
+            openssl-devel zlib-devel libcurl-devel \
+            python3 -y
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set duckdb_version variable
+        run: |
+          echo "Setting DUCKDB_VER variable, current dir is '$(pwd)'"
+          ls -lah
+          source ./duckdb_version
+          echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
+
+      - name: Clone DuckDB
+        run: |
+          git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
+
+      - name: Build DuckDB bundle
+        run: |
+          pushd duckdb
+          mkdir -p build/release/vcpkg_installed/arm64-linux/lib
+          pushd build
+          cmake .. \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DDISABLE_EXTENSION_LOAD=1 \
+            -DBUILD_EXTENSIONS="httpfs;parquet;json;icu;"
+          popd
+          make bundle-library
+          popd
+
+      - name: Zip library
+        run: |
+          pushd duckdb
+          zip libduckdb_bundle.zip build/release/libduckdb_bundle.a
+          popd
+
+      - name: Create GitHub Release and upload zip
+        uses: softprops/action-gh-release@v1
+        with:
+          files: duckdb/libduckdb_bundle.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
