@@ -1,16 +1,18 @@
 name: Build DuckDB Bundle on Amazon Linux 2023
 
-on: 
+on:
   push:
-    tags:        
+    tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'suremate' || 'blacksmith-2vcpu-ubuntu-2404-arm' }}
+    
     container:
       image: public.ecr.aws/amazonlinux/amazonlinux:2023
 
@@ -19,9 +21,8 @@ jobs:
         run: |
           dnf update -y
           dnf install --allowerasing \
-            tar gzip git cmake \
-            make gcc gcc-c++ \
-            zip unzip curl \
+            tar gzip xz git cmake \
+            make gcc gcc-c++ curl \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
       
@@ -48,16 +49,16 @@ jobs:
           make bundle-library
           popd
 
-      - name: Zip library
+      - name: Package library
         run: |
           pushd duckdb
-          zip libduckdb_bundle.zip build/release/libduckdb_bundle.a
+          tar -cJf libduckdb_bundle-arm64-linux.tar.xz -C ./build/release libduckdb_bundle.a
           popd
 
-      - name: Create GitHub Release and upload zip
+      - name: Create GitHub Release and upload file
         uses: softprops/action-gh-release@v2
         if: github.ref_type == 'tag'
         with:
-          files: duckdb/libduckdb_bundle.zip
+          files: duckdb/libduckdb_bundle-arm64-linux.tar.xz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
