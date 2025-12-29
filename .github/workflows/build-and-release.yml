@@ -1,6 +1,9 @@
 name: Build DuckDB Bundle on Amazon Linux 2023
 
-on: push
+on: 
+  push:
+    tags:        
+      - 'v*'
 
 permissions:
   contents: write
@@ -39,13 +42,9 @@ jobs:
         run: |
           pushd duckdb
           mkdir -p build/release/vcpkg_installed/arm64-linux/lib
-          pushd build
-          cmake .. \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DDISABLE_EXTENSION_LOAD=1 \
-            -DBUILD_EXTENSIONS="httpfs;parquet;json;icu;"
-          popd
+          DUCKDB_PLATFORM=any \
+          DISABLE_EXTENSION_LOAD=1 \
+          BUILD_EXTENSIONS="httpfs;parquet;json;icu;" \
           make bundle-library
           popd
 
