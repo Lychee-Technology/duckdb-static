@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'suremate' || 'blacksmith-2vcpu-ubuntu-2404-arm' }}
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'self-hosted' || 'blacksmith-2vcpu-ubuntu-2404-arm' }}
     
     container:
       image: public.ecr.aws/amazonlinux/amazonlinux:2023
