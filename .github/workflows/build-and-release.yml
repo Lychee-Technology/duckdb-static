@@ -7,7 +7,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: suremate
+    runs-on: blacksmith-2vcpu-ubuntu-2404-arm
     container:
       image: public.ecr.aws/amazonlinux/amazonlinux:2023
 
