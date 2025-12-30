@@ -1,4 +1,4 @@
-name: Build DuckDB Bundle on Amazon Linux 2023
+name: Build DuckDB static bundle on Amazon Linux 2023
 
 on:
   push:
@@ -11,11 +11,21 @@ permissions:
 
 jobs:
   build:
-    runs-on: ${{ github.event_name == 'workflow_dispatch' && 'ubuntu-24.04-arm' || 'blacksmith-2vcpu-ubuntu-2404-arm' }}
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: 'ubuntu-24.04-arm' 
+            platform: arm64-linux
+          - arch: amd64
+            runner: 'ubuntu-latest' 
+            platform: amd64-linux
+    
+    runs-on: ${{ matrix.runner }}
     
     container:
       image: public.ecr.aws/amazonlinux/amazonlinux:2023
-
+    
     steps:
       - name: Install basic tools
         run: |
@@ -28,37 +38,74 @@ jobs:
       
       - name: Checkout repository
         uses: actions/checkout@v6
-
+      
       - name: Set duckdb_version variable
         run: |
           echo "Setting DUCKDB_VER variable"
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
-
+      
       - name: Clone DuckDB
         run: |
           git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
-
+      
       - name: Build DuckDB bundle
         run: |
           pushd duckdb
-          mkdir -p build/release/vcpkg_installed/arm64-linux/lib
+          mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
           DUCKDB_PLATFORM=any \
           DISABLE_EXTENSION_LOAD=1 \
           BUILD_EXTENSIONS="httpfs;parquet;json;icu;" \
           make bundle-library
           popd
-
+      
       - name: Package library
         run: |
           pushd duckdb
-          tar -cJf libduckdb_bundle-arm64-linux.tar.xz -C ./build/release libduckdb_bundle.a
+          tar -cJf libduckdb_bundle-${{ matrix.platform }}.tar.xz -C ./build/release libduckdb_bundle.a
           popd
-
-      - name: Create GitHub Release and upload file
-        uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          files: duckdb/libduckdb_bundle-arm64-linux.tar.xz
+          name: libduckdb-${{ matrix.arch }}
+          path: duckdb/libduckdb_bundle-${{ matrix.platform }}.tar.xz
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
+    
+    steps:
+      - name: Download ARM64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libduckdb-arm64
+          path: ./release
+      
+      - name: Download AMD64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: libduckdb-amd64
+          path: ./release
+      
+      - name: List files
+        run: |
+          echo "Files to be released:"
+          ls -lh ./release/
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release/*
+          body: |
+            Multi-architecture DuckDB bundle release
+            
+            Architectures included:
+            - ARM64 (aarch64)
+            - AMD64 (x86_64)
+            
+            Built on Amazon Linux 2023
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
