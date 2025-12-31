@@ -1,0 +1,6 @@
+*.a
+*.so
+.DS_Store
+.aws-sam/
+*.zip
+libs/
