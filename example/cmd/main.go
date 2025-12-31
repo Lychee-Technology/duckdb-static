@@ -56,7 +56,6 @@ func loadExtension(db *sql.DB, extensionNames []string) error {
 		queries = append(queries, fmt.Sprintf("LOAD '%s';", extensionName))
 	}
 
-	// 执行独立的 SELECT COUNT 作为示例
 	if _, err := db.Exec(strings.Join(queries, "\n")); err != nil {
 		return err
 	}
