@@ -21,7 +21,20 @@ else
 	ASSET_ARCH_PAT := (amd64|x86_64|x64)
 endif
 
-.PHONY: build-DuckDBExampleFunction clean download-libduckdb_bundle
+.PHONY: clean download-libduckdb_bundle build-DuckDBExampleFunction
+
+build-DuckDBExampleFunction: download-libduckdb_bundle
+	@echo "Building with Docker (ARCH=$(ARCH))..."
+	@echo "Using Go Version: $(GO_VERSION)"
+	@mkdir -p $(ARTIFACTS_DIR)
+	@docker build \
+	--platform $(DOCKER_PLATFORM) \
+	--build-arg GO_VERSION=$(GO_VERSION) \
+	--build-arg GO_ARCH=$(GO_DOWNLOAD_ARCH) \
+	--output type=local,dest=$(ARTIFACTS_DIR) \
+	--target exporter \
+	.
+	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
 
 # download-libduckdb_bundle
 # Downloads the latest release assets from the duckdb-static GitHub releases
@@ -42,18 +55,7 @@ download-libduckdb_bundle:
 	fi; \
 	echo "Done."
 
-build-DuckDBExampleFunction: download-libduckdb_bundle
-	@echo "Building with Docker (ARCH=$(ARCH))..."
-	@echo "Using Go Version: $(GO_VERSION)"
-	@mkdir -p $(ARTIFACTS_DIR)
-	@docker build \
-	--platform $(DOCKER_PLATFORM) \
-	--build-arg GO_VERSION=$(GO_VERSION) \
-	--build-arg GO_ARCH=$(GO_DOWNLOAD_ARCH) \
-	--output type=local,dest=$(ARTIFACTS_DIR) \
-	--target exporter \
-	.
-	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
+
 
 clean:
 	rm -rf $(ARTIFACTS_DIR)

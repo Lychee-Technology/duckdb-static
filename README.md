@@ -37,12 +37,12 @@ This bundle is built on **Amazon Linux 2023** and comes pre-packaged with the mo
 This repository utilizes a **GitHub Actions** workflow to ensure reliability and transparency:
 1.  **Trigger:** workflow triggers automatically whenever a new tag is pushed.
 2.  **Build:** Compiles a static bundle of DuckDB + Extensions on Amazon Linux 2023.
-3.  **Release:** Automatically generates a `.zip` file and publishes it to GitHub Releases.
+3.  **Release:** Automatically generates `.tar.xz` files and publishes them to GitHub Releases.
 
 ### Installation / Usage
 You don't need to build from source. simply:
 1.  Go to the [**Releases**](https://github.com/Lychee-Technology/duckdb-static/releases) page.
-2.  Download the latest zip file.
+2.  Download the latest `.tar.xz` file for the corresponding arch.
 3.  Include the binary in your serverless deployment package.
 
 

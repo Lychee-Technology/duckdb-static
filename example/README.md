@@ -36,10 +36,10 @@ This example demonstrates how to build a Go-based AWS Lambda function that uses 
 Run the following command to download the static libraries for your target architecture (default is `arm64`):
 
 ```bash
-make download-libs
+make download-libduckdb_bundle
 ```
 
-This will populate the `libs/` directory with `duckdb_bundle.a` and other necessary files.
+This will populate the `libs/` directory with `libduckdb_bundle.a` and other necessary files.
 
 ### 2. Build the Lambda Function
 
@@ -61,13 +61,6 @@ Then run:
 sam local invoke DuckDBExampleFunction --env-vars env.json
 ```
 
-## Deployment
-
-To deploy to AWS:
-
-```bash
-sam deploy --guided
-```
 
 ## Lambda Function Details
 
