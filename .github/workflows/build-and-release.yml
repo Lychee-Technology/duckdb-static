@@ -55,7 +55,7 @@ jobs:
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
           DUCKDB_PLATFORM=any \
           DISABLE_EXTENSION_LOAD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;json;icu;" \
+          BUILD_EXTENSIONS="httpfs;parquet;json;icu;vortex;" \
           make bundle-library
           popd
       
