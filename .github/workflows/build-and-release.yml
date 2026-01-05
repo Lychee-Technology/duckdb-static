@@ -17,27 +17,33 @@ jobs:
           - arch: arm64
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
-            build_extensions: 'httpfs;json;icu;;parquet'
+            build_extensions: 'httpfs;json;icu;parquet'
+            flavor: 'httpfs-parquet'
           - arch: arm64
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             build_extensions: 'httpfs;json;icu;vortex;'
+            flavor: 'httpfs-vortex'
           - arch: arm64
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             build_extensions: 'httpfs;json;icu;parquet;vortex;'
+            flavor: 'httpfs-parquet-vortex'
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
-            build_extensions: 'httpfs;json;icu;;parquet'
+            build_extensions: 'httpfs;json;icu;parquet'
+            flavor: 'httpfs-parquet'
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             build_extensions: 'httpfs;json;icu;vortex;'
+            flavor: 'httpfs-vortex'
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             build_extensions: 'httpfs;json;icu;parquet;vortex;'
+            flavor: 'httpfs-parquet-vortex'
     
     runs-on: ${{ matrix.runner }}
     
@@ -86,14 +92,14 @@ jobs:
       - name: Package library
         run: |
           pushd duckdb
-          tar -cJf libduckdb_bundle-${{ matrix.platform }}.tar.xz -C ./build/release libduckdb_bundle.a
+          tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C ./build/release libduckdb_bundle.a
           popd
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libduckdb-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle-${{ matrix.platform }}.tar.xz
+          name: libduckdb-${{ matrix.arch }}-${{ matrix.flavor }}
+          path: duckdb/libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
           retention-days: 1
 
   release:
