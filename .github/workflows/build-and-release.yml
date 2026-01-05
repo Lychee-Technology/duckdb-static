@@ -17,9 +17,27 @@ jobs:
           - arch: arm64
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
+            build_extensions: 'httpfs;json;icu;;parquet'
+          - arch: arm64
+            runner: 'ubuntu-24.04-arm' 
+            platform: arm64-linux
+            build_extensions: 'httpfs;json;icu;vortex;'
+          - arch: arm64
+            runner: 'ubuntu-24.04-arm' 
+            platform: arm64-linux
+            build_extensions: 'httpfs;json;icu;parquet;vortex;'
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
+            build_extensions: 'httpfs;json;icu;;parquet'
+          - arch: amd64
+            runner: 'ubuntu-latest' 
+            platform: amd64-linux
+            build_extensions: 'httpfs;json;icu;vortex;'
+          - arch: amd64
+            runner: 'ubuntu-latest' 
+            platform: amd64-linux
+            build_extensions: 'httpfs;json;icu;parquet;vortex;'
     
     runs-on: ${{ matrix.runner }}
     
@@ -61,7 +79,7 @@ jobs:
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
           DUCKDB_PLATFORM=any \
           DISABLE_EXTENSION_LOAD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;json;icu;vortex;" \
+          BUILD_EXTENSIONS="${{ matrix.build_extensions }}" \
           make bundle-library
           popd
       
