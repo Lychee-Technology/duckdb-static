@@ -35,6 +35,12 @@ jobs:
             make gcc gcc-c++ curl patch \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
+          
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          source "$HOME/.cargo/env"
+          rustc --version
       
       - name: Checkout repository
         uses: actions/checkout@v6
