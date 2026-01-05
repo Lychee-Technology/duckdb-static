@@ -32,7 +32,7 @@ jobs:
           dnf update -y
           dnf install --allowerasing \
             tar gzip xz git cmake \
-            make gcc gcc-c++ curl \
+            make gcc gcc-c++ curl patch \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
       
