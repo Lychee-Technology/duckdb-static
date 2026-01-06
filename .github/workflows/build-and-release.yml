@@ -92,7 +92,12 @@ jobs:
       - name: Package library
         run: |
           pushd duckdb
-          tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C ./build/release libduckdb_bundle.a
+          FILES_TO_PACK="libduckdb_bundle.a"
+          if [[ "${{ matrix.flavor }}" == *"vortex"* ]]; then
+            cp ./build/release/extension/vortex/libvortex_duckdb.a ./build/release/
+            FILES_TO_PACK="$FILES_TO_PACK libvortex_duckdb.a"
+          fi
+          tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C ./build/release $FILES_TO_PACK
           popd
       
       - name: Upload artifact
