@@ -14,12 +14,24 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: arm64
+          - arch: arm64-aws-lambda
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
+            DUCKDB_PLATFORM: linux_arm64
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -DNDEBUG"
+          - arch: m1-linux
+            runner: 'ubuntu-24.04-arm' 
+            platform: arm64-linux
+            DUCKDB_PLATFORM: linux_arm64
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=apple-m1 -moutline-atomics -O3 -flto=auto -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=apple-m1 -moutline-atomics -O3 -flto=auto -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
+            DUCKDB_PLATFORM: linux_amd64
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
@@ -53,7 +65,10 @@ jobs:
         run: |
           pushd duckdb
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
-          DUCKDB_PLATFORM=any \
+          export CXXFLAGS="${{ matrix.CXXFLAGS }}"
+          export CFLAGS="${{ matrix.CFLAGS }}"
+          DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
+          BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
           BUILD_EXTENSIONS="httpfs;parquet;json;icu;" \
           make bundle-library
@@ -62,14 +77,14 @@ jobs:
       - name: Package library
         run: |
           pushd duckdb
-          tar -cJf libduckdb_bundle-${{ matrix.platform }}.tar.xz -C ./build/release libduckdb_bundle.a
+          tar -cJf libduckdb_bundle-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
           popd
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: libduckdb-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle-${{ matrix.platform }}.tar.xz
+          path: duckdb/libduckdb_bundle-${{ matrix.arch }}.tar.xz
           retention-days: 1
 
   release:
@@ -81,13 +96,7 @@ jobs:
       - name: Download ARM64 artifact
         uses: actions/download-artifact@v4
         with:
-          name: libduckdb-arm64
-          path: ./release
-      
-      - name: Download AMD64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: libduckdb-amd64
+          pattern: libduckdb-*
           path: ./release
       
       - name: List files
@@ -100,12 +109,6 @@ jobs:
         with:
           files: ./release/*
           body: |
-            Multi-architecture DuckDB bundle release
-            
-            Architectures included:
-            - ARM64 (aarch64)
-            - AMD64 (x86_64)
-            
-            Built on Amazon Linux 2023
+            Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
