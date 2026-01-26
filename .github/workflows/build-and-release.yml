@@ -18,17 +18,17 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
           - arch: m1-linux
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -Os -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
@@ -75,21 +75,21 @@ jobs:
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;icu;" \
+          BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
           make bundle-library
           popd
       
       - name: Package library
         run: |
           pushd duckdb
-          tar -cJf libduckdb_bundle-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
+          tar -cJf libduckdb_bundle-${{ matrix.arch }}-$DUCKDB_VER.tar.xz -C ./build/release libduckdb_bundle.a
           popd
       
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libduckdb-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle-${{ matrix.arch }}.tar.xz
+          name: libduckdb-${{ matrix.arch }}-$DUCKDB_VER
+          path: duckdb/libduckdb_bundle-${{ matrix.arch }}-$DUCKDB_VER.tar.xz
           retention-days: 1
 
   release:
