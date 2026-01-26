@@ -18,19 +18,19 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
             CFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -DNDEBUG"
           - arch: m1-linux
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
             CFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
             CFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
@@ -44,7 +44,7 @@ jobs:
           dnf update -y
           dnf install --allowerasing \
             tar gzip xz git cmake \
-            gcc14 gcc14-c++ \
+            gcc gcc-c++ \
             make curl \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
@@ -67,8 +67,6 @@ jobs:
           pushd duckdb
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
 
-          export CC=/usr/bin/gcc14-gcc
-          export CXX=/usr/bin/gcc14-g++
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
 
           echo "📋 Compiler version:"
@@ -76,10 +74,11 @@ jobs:
 
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
           export CFLAGS="${{ matrix.CFLAGS }}"
+
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;json;icu;" \
+          BUILD_EXTENSIONS="httpfs;parquet;icu;" \
           make bundle-library
           popd
       
