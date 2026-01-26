@@ -18,19 +18,19 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -DNDEBUG"
             CFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -DNDEBUG"
           - arch: m1-linux
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -DNDEBUG"
             CFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffast-math -funroll-loops -fomit-frame-pointer -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -DNDEBUG"
             CFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
@@ -69,6 +69,7 @@ jobs:
 
           export CC=/usr/bin/gcc14-gcc
           export CXX=/usr/bin/gcc14-g++
+          export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
 
           echo "📋 Compiler version:"
           $CC --version | head -1
