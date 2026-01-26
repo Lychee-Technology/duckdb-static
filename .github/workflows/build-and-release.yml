@@ -65,10 +65,6 @@ jobs:
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
 
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
-
-          echo "📋 Compiler version:"
-          $CC --version | head -1
-
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
           export CFLAGS="${{ matrix.CXXFLAGS }}"
 
@@ -82,6 +78,7 @@ jobs:
       - name: Package library
         run: |
           pushd duckdb
+          ls -alR
           tar -cJf libduckdb_bundle-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
           popd
       
@@ -89,7 +86,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: libduckdb-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle-${{ matrix.arch }}.tar.xzz
+          path: duckdb/libduckdb_bundle-${{ matrix.arch }}.tar.xz
           retention-days: 1
 
   release:
