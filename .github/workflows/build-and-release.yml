@@ -18,17 +18,17 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
           - arch: m1-linux
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -Os -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -Os -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
