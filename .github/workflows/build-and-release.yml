@@ -14,21 +14,16 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: arm64-aws-lambda
+          - arch: arm64
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O2 -flto=auto -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
-          - arch: m1-linux
-            runner: 'ubuntu-24.04-arm' 
-            platform: arm64-linux
-            DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O2 -flto=auto -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=generic -moutline-atomics -Os -flto=auto -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O2 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -Os -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -ffast-math -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
@@ -78,7 +73,6 @@ jobs:
       - name: Package library
         run: |
           pushd duckdb
-          ls -alR
           tar -cJf libduckdb_bundle-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
           popd
       
@@ -95,7 +89,7 @@ jobs:
     if: github.ref_type == 'tag'
     
     steps:
-      - name: Download ARM64 artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: libduckdb-*
