@@ -18,20 +18,17 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
-            CFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod -mtune=neoverse-n1 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
           - arch: m1-linux
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
-            CFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -DNDEBUG"
+            CXXFLAGS: "-march=armv8.4-a+crypto+fp16+dotprod+rcpc+sha3 -mtune=cortex-a78 -moutline-atomics -O3 -flto=auto -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -fomit-frame-pointer -ffast-math -DNDEBUG"
-            CFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -mtune=generic -O3 -flto=auto -mavx -mavx2 -mfma -ffunction-sections -fdata-sections -funroll-loops -fomit-frame-pointer -ffast-math -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
@@ -73,7 +70,7 @@ jobs:
           $CC --version | head -1
 
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
-          export CFLAGS="${{ matrix.CFLAGS }}"
+          export CFLAGS="${{ matrix.CXXFLAGS }}"
 
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
