@@ -66,43 +66,12 @@ jobs:
         run: |
           pushd duckdb
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
-      
-          echo "🔍 Finding GCC 14..."
-          GCC14=$(which gcc-14 2>/dev/null || which gcc14 2>/dev/null || echo "")
-          GXX14=$(which g++-14 2>/dev/null || which g++14 2>/dev/null || echo "")
 
-          if [ -z "$GCC14" ]; then
-              echo "❌ Error, cannot find GCC 14 in $PATH"
-              echo "Trying to find it in common locations..."
-              
-              for path in /usr/bin/gcc-14 /usr/bin/gcc14; do
-                  if [ -x "$path" ]; then
-                      GCC14="$path"
-                      break
-                  fi
-              done
-              
-              for path in /usr/bin/g++-14 /usr/bin/g++14; do
-                  if [ -x "$path" ]; then
-                      GXX14="$path"
-                      break
-                  fi
-              done
-          fi
+          export CC=/usr/bin/gcc14-gcc
+          export CXX=/usr/bin/gcc14-g++
 
-          if [ -z "$GCC14" ]; then
-              echo "❌ Cannot find GCC 14, please install it first"
-              exit 1
-          fi
-
-          echo "✅ Find compiler:"
-          echo "   C:   $GCC14"
-          echo "   C++: $GXX14"
-          export CC=$GCC14
-          export CXX=$GXX14
-          echo ""
           echo "📋 Compiler version:"
-          $CXX --version | head -1
+          $CC --version | head -1
 
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
           export CFLAGS="${{ matrix.CFLAGS }}"
