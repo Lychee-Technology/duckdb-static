@@ -95,6 +95,7 @@ jobs:
         with:
           pattern: libduckdb-*
           path: ./release
+          merge-multiple: true
       
       - name: List files
         run: |
