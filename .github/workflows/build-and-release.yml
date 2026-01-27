@@ -18,12 +18,12 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3"
+            CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
     
     runs-on: ${{ matrix.runner }}
     
@@ -36,7 +36,7 @@ jobs:
           dnf update -y
           dnf install --allowerasing \
             tar gzip xz git cmake \
-            gcc gcc-c++ \
+            gcc14 gcc14-c++ \
             make curl \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
@@ -59,10 +59,16 @@ jobs:
           pushd duckdb
           mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
 
+          export CC=/usr/bin/gcc14-gcc
+          export CXX=/usr/bin/gcc14-g++
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
           export CFLAGS="${{ matrix.CXXFLAGS }}"
+          
+          echo "Compiler version:"
+          $CXX --version | head -1
 
+          GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
@@ -91,7 +97,7 @@ jobs:
     
     steps:
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: libduckdb-*
           path: ./release
