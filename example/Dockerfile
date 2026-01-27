@@ -6,7 +6,7 @@
 # --------------------------------------------------------
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS builder
 
-ARG GO_VERSION=1.25.5
+ARG GO_VERSION=1.25.6
 ARG GOOS=linux
 ARG GO_ARCH=arm64
 
