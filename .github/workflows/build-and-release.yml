@@ -37,7 +37,7 @@ jobs:
           dnf install --allowerasing \
             tar gzip xz git cmake \
             gcc14 gcc14-c++ \
-            make curl \
+            make curl ninja-build \
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
       
