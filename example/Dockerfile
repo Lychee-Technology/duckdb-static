@@ -14,9 +14,9 @@ ARG GO_ARCH=arm64
 RUN dnf -y update && \
     dnf -y install --allowerasing \
       curl tar gzip zip git make which \
-      gcc gcc-c++ \
+      gcc14 gcc14-c++ \
       openssl-devel zlib-devel libcurl-devel \
-      libstdc++-devel && \
+      gcc14-libstdc++-devel && \
     dnf clean all && \
     rm -rf /var/cache/dnf
 
@@ -29,8 +29,8 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOOS=${GOOS} \
     GOARCH=${GO_ARCH} \
     CGO_ENABLED=1 \
-    CC=gcc \
-    CXX=g++ \
+    CC=/usr/bin/gcc14-gcc \
+    CXX=/usr/bin/gcc14-g++ \
     GOCACHE=/root/.cache/go-build \
     GOMODCACHE=/go/pkg/mod
 
