@@ -18,12 +18,12 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -flto=auto -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -ffunction-sections -fdata-sections -DNDEBUG"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -ffunction-sections -flto=auto -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3 -ffunction-sections -fdata-sections -DNDEBUG"
     
     runs-on: ${{ matrix.runner }}
     
