@@ -64,6 +64,7 @@ jobs:
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
           export CXXFLAGS="${{ matrix.CXXFLAGS }}"
           export CFLAGS="${{ matrix.CXXFLAGS }}"
+          export MAKEFLAGS="-j$(nproc)"
           
           echo "Compiler version:"
           $CXX --version | head -1
