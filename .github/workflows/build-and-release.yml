@@ -18,12 +18,12 @@ jobs:
             runner: 'ubuntu-24.04-arm' 
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse"
           - arch: amd64
             runner: 'ubuntu-latest' 
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -ffunction-sections -fdata-sections -DNDEBUG"
+            CXXFLAGS: "-march=x86-64-v3"
     
     runs-on: ${{ matrix.runner }}
     
@@ -66,6 +66,7 @@ jobs:
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
+          EXTENSION_STATIC_BUILD=1 \
           BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
           make bundle-library
           popd
