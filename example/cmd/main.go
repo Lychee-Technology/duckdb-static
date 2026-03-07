@@ -24,34 +24,88 @@ func getEnvWithDefault(key, defaultValue string) string {
 	return value
 }
 
-func (hc *handlerContext) handler(ctx context.Context, request any) (string, error) {
-
+// parquetHandler queries a Parquet file from S3 and returns the row count.
+func (hc *handlerContext) parquetHandler(ctx context.Context, request any) (string, error) {
 	s3ObjectURI := os.Getenv("S3_OBJECT_URI")
 	if s3ObjectURI == "" {
 		return "", fmt.Errorf("S3_OBJECT_URI environment variable is not set")
 	}
-	result, err := hc.db.QueryContext(ctx, fmt.Sprintf("select count(*) from read_parquet('%s');", s3ObjectURI))
-
+	rows, err := hc.db.QueryContext(ctx, fmt.Sprintf("SELECT count(*) FROM read_parquet('%s');", s3ObjectURI))
 	if err != nil {
 		return "", fmt.Errorf("QueryContext failed: %v", err)
 	}
-
-	row := result.Next()
-	if row {
+	defer rows.Close()
+	if rows.Next() {
 		var count int
-		if err := result.Scan(&count); err != nil {
+		if err := rows.Scan(&count); err != nil {
 			return "", fmt.Errorf("scan result failed: %v", err)
 		}
 		return fmt.Sprintf("count: %d\n", count), nil
 	}
-
 	return "", nil
+}
+
+// lanceHandler writes a small Lance dataset to /tmp, reads it back, and
+// optionally queries a Lance dataset from S3 if S3_OBJECT_URI is set.
+func (hc *handlerContext) lanceHandler(ctx context.Context, request any) (string, error) {
+	const lanceDir = "/tmp/test_lance"
+
+	// Write a small Lance dataset
+	_, err := hc.db.ExecContext(ctx, fmt.Sprintf(
+		`COPY (
+			SELECT i AS id,
+			       [CAST(i AS FLOAT), CAST(i*2 AS FLOAT), CAST(i*3 AS FLOAT)] AS vector,
+			       'item_' || CAST(i AS VARCHAR) AS label
+			FROM range(10) t(i)
+		) TO '%s' (FORMAT lance)`, lanceDir))
+	if err != nil {
+		return "", fmt.Errorf("lance write failed: %v", err)
+	}
+
+	// Read it back
+	rows, err := hc.db.QueryContext(ctx, fmt.Sprintf(
+		`SELECT id, label FROM lance_scan('%s') ORDER BY id LIMIT 5`, lanceDir))
+	if err != nil {
+		return "", fmt.Errorf("lance_scan failed: %v", err)
+	}
+	defer rows.Close()
+
+	var result strings.Builder
+	result.WriteString("lance local test:\n")
+	for rows.Next() {
+		var id int
+		var label string
+		if err := rows.Scan(&id, &label); err != nil {
+			return "", fmt.Errorf("scan failed: %v", err)
+		}
+		result.WriteString(fmt.Sprintf("  id=%d label=%s\n", id, label))
+	}
+
+	// If S3_OBJECT_URI is set, also query a Lance dataset from S3
+	s3URI := os.Getenv("S3_OBJECT_URI")
+	if s3URI != "" {
+		countRows, err := hc.db.QueryContext(ctx,
+			fmt.Sprintf("SELECT count(*) FROM lance_scan('%s');", s3URI))
+		if err != nil {
+			return "", fmt.Errorf("S3 lance_scan failed: %v", err)
+		}
+		defer countRows.Close()
+		if countRows.Next() {
+			var count int
+			if err := countRows.Scan(&count); err != nil {
+				return "", fmt.Errorf("scan count failed: %v", err)
+			}
+			result.WriteString(fmt.Sprintf("s3 lance count: %d\n", count))
+		}
+	}
+
+	return result.String(), nil
 }
 
 func loadExtension(db *sql.DB, extensionNames []string) error {
 	begin := time.Now().UnixNano()
 
-	queries := make([]string, len(extensionNames))
+	queries := make([]string, 0, len(extensionNames))
 	for _, extensionName := range extensionNames {
 		queries = append(queries, fmt.Sprintf("LOAD '%s';", extensionName))
 	}
@@ -76,22 +130,22 @@ func main() {
 	db.SetMaxIdleConns(10)
 	db.SetConnMaxLifetime(time.Minute * 5)
 	db.SetConnMaxIdleTime(time.Minute * 2)
-
 	defer db.Close()
 
 	if err := loadExtension(db, []string{"httpfs"}); err != nil {
 		fmt.Printf("loadExtension failed: %v", err)
 		return
 	}
+
 	begin := time.Now().UnixNano()
 	_, err = db.Exec(`CREATE OR REPLACE SECRET secret (
 		TYPE S3,
 		PROVIDER config,
 		ENDPOINT ?,
-    	KEY_ID ?,
-    	SECRET ?,
+		KEY_ID ?,
+		SECRET ?,
 		SESSION_TOKEN ?,
-    	REGION ?,
+		REGION ?,
 		USE_SSL ?,
 		URL_STYLE ?
 	);`,
@@ -105,14 +159,20 @@ func main() {
 	)
 	end := time.Now().UnixNano()
 	fmt.Printf("CREATE secret took %d ms\n", (end-begin)/1e6)
-
 	if err != nil {
 		fmt.Printf("CREATE secret failed: %v", err)
 		return
 	}
-	handlerContext := &handlerContext{
-		db: db,
+
+	hc := &handlerContext{db: db}
+
+	// Select handler based on BUNDLE_TYPE env var ("lance" or "parquet")
+	bundleType := getEnvWithDefault("BUNDLE_TYPE", "parquet")
+	fmt.Printf("bundle type: %s\n", bundleType)
+
+	if bundleType == "lance" {
+		lambda.Start(hc.lanceHandler)
+	} else {
+		lambda.Start(hc.parquetHandler)
 	}
-	handler := handlerContext.handler
-	lambda.Start(handler)
 }

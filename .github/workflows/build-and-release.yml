@@ -190,15 +190,19 @@ jobs:
 
       - name: Package lance library
         run: |
-          pushd duckdb
-          tar -cJf libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
-          popd
+          mkdir -p /tmp/lance-pkg
+          cp duckdb/build/release/libduckdb_bundle.a /tmp/lance-pkg/
+          find duckdb/build/release -name "liblance_extension.a" -exec cp {} /tmp/lance-pkg/ \;
+          find duckdb/build/release -name "liblance_duckdb_ffi.a" -exec cp {} /tmp/lance-pkg/ \;
+          echo "Package contents:"
+          ls -lh /tmp/lance-pkg/
+          tar -cJf libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz -C /tmp/lance-pkg .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: libduckdb-lance-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz
+          path: libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz
           retention-days: 1
 
   release:
