@@ -120,7 +120,7 @@ jobs:
             gcc14 gcc14-c++ \
             make curl ninja-build \
             openssl-devel zlib-devel libcurl-devel \
-            bzip2-devel protobuf-compiler \
+            bzip2-devel protobuf-compiler protobuf-devel \
             python3 -y
 
       - name: Create cc symlinks for Rust
