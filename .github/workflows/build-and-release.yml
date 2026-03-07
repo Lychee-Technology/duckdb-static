@@ -189,7 +189,7 @@ jobs:
           GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
-          DISABLE_EXTENSION_LOAD=1 \
+          DISABLE_EXTENSION_LOAD=0 \
           EXTENSION_STATIC_BUILD=1 \
           BUILD_EXTENSIONS="icu;json;" \
           EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake" \
