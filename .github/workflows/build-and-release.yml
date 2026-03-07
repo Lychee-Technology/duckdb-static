@@ -136,10 +136,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set duckdb_version variable
+      - name: Set version variables
         run: |
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
+          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
 
       - name: Clone DuckDB
         run: |
@@ -147,7 +148,7 @@ jobs:
 
       - name: Clone lance-duckdb
         run: |
-          git clone --depth 1 https://github.com/lance-format/lance-duckdb.git
+          git clone --depth 1 --branch $LANCE_DUCKDB_VER https://github.com/lance-format/lance-duckdb.git
 
       - name: Cache Rust build artifacts
         uses: actions/cache@v4
