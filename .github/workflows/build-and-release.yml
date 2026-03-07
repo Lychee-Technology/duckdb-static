@@ -127,9 +127,9 @@ jobs:
             export CARGO_PROFILE_RELEASE_PANIC=abort
             export CARGO_PROFILE_RELEASE_LTO=thin
             export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+            export EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake"
             echo "Rust version:"
             cargo --version
-            EXTENSION_CONFIGS="EXTENSION_CONFIGS=$(pwd)/../lance-duckdb/extension_config.cmake"
           fi
 
           GEN=ninja \
@@ -138,7 +138,6 @@ jobs:
           DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
           BUILD_EXTENSIONS="${{ matrix.build_extensions }}" \
-          ${EXTENSION_CONFIGS:-} \
           EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
           make bundle-library
           objcopy --strip-debug build/release/libduckdb_bundle.a
@@ -149,6 +148,7 @@ jobs:
           mkdir -p /tmp/pkg
           cp duckdb/build/release/libduckdb_bundle.a /tmp/pkg/
           if [ "${{ matrix.bundle }}" = "lance" ]; then
+            find duckdb/build/release -name "liblance_extension.a" -exec cp {} /tmp/pkg/ \;
             find duckdb/build/release -name "liblance_duckdb_ffi.a" -exec cp {} /tmp/pkg/ \;
           fi
           echo "Package contents:"
