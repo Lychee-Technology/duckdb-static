@@ -123,6 +123,11 @@ jobs:
             bzip2-devel protobuf-compiler \
             python3 -y
 
+      - name: Create cc symlinks for Rust
+        run: |
+          ln -sf /usr/bin/gcc14-gcc /usr/local/bin/cc
+          ln -sf /usr/bin/gcc14-g++ /usr/local/bin/c++
+
       - name: Install Rust
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
