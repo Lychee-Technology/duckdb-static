@@ -19,11 +19,33 @@ jobs:
             platform: arm64-linux
             DUCKDB_PLATFORM: linux_arm64
             CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
+            bundle: base
+            build_extensions: "httpfs;parquet;icu;json;"
+            artifact_suffix: ""
           - arch: amd64
             runner: 'ubuntu-latest'
             platform: amd64-linux
             DUCKDB_PLATFORM: linux_amd64
             CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
+            bundle: base
+            build_extensions: "httpfs;parquet;icu;json;"
+            artifact_suffix: ""
+          - arch: arm64
+            runner: 'ubuntu-24.04-arm'
+            platform: arm64-linux
+            DUCKDB_PLATFORM: linux_arm64
+            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
+            bundle: lance
+            build_extensions: "httpfs;parquet;icu;json;"
+            artifact_suffix: "-lance"
+          - arch: amd64
+            runner: 'ubuntu-latest'
+            platform: amd64-linux
+            DUCKDB_PLATFORM: linux_amd64
+            CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
+            bundle: lance
+            build_extensions: "httpfs;parquet;icu;json;"
+            artifact_suffix: "-lance"
 
     runs-on: ${{ matrix.runner }}
 
@@ -41,18 +63,47 @@ jobs:
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
 
+      - name: Install lance dependencies
+        if: matrix.bundle == 'lance'
+        run: |
+          dnf install --allowerasing \
+            bzip2-devel protobuf-compiler protobuf-devel -y
+          ln -sf /usr/bin/gcc14-gcc /usr/local/bin/cc
+          ln -sf /usr/bin/gcc14-g++ /usr/local/bin/c++
+
+      - name: Install Rust
+        if: matrix.bundle == 'lance'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Set duckdb_version variable
+      - name: Set version variables
         run: |
-          echo "Setting DUCKDB_VER variable"
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
+          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
 
       - name: Clone DuckDB
-        run: |
-          git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
+        run: git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
+
+      - name: Clone lance-duckdb
+        if: matrix.bundle == 'lance'
+        run: git clone --depth 1 --branch $LANCE_DUCKDB_VER https://github.com/lance-format/lance-duckdb.git
+
+      - name: Cache Rust build artifacts
+        if: matrix.bundle == 'lance'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            lance-duckdb/target
+          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('lance-duckdb/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-cargo-
 
       - name: Build DuckDB bundle
         run: |
@@ -69,154 +120,50 @@ jobs:
           echo "Compiler version:"
           $CXX --version | head -1
 
-          GEN=ninja \
-          DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
-          BUILD_SHELL=0 \
-          DISABLE_EXTENSION_LOAD=1 \
-          EXTENSION_STATIC_BUILD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
-          EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
-          make bundle-library
-          objcopy --strip-debug build/release/libduckdb_bundle.a
-          popd
-
-      - name: Package library
-        run: |
-          pushd duckdb
-          tar -cJf libduckdb_bundle-${{ matrix.arch }}.tar.xz -C ./build/release libduckdb_bundle.a
-          popd
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: libduckdb-${{ matrix.arch }}
-          path: duckdb/libduckdb_bundle-${{ matrix.arch }}.tar.xz
-          retention-days: 1
-
-  build-lance:
-    strategy:
-      matrix:
-        include:
-          - arch: arm64
-            runner: 'ubuntu-24.04-arm'
-            platform: arm64-linux
-            DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
-          - arch: amd64
-            runner: 'ubuntu-latest'
-            platform: amd64-linux
-            DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
-
-    runs-on: ${{ matrix.runner }}
-
-    container:
-      image: public.ecr.aws/amazonlinux/amazonlinux:2023
-
-    steps:
-      - name: Install basic tools
-        run: |
-          dnf update -y
-          dnf install --allowerasing \
-            tar gzip xz git cmake \
-            gcc14 gcc14-c++ \
-            make curl ninja-build \
-            openssl-devel zlib-devel libcurl-devel \
-            bzip2-devel protobuf-compiler protobuf-devel \
-            python3 -y
-
-      - name: Create cc symlinks for Rust
-        run: |
-          ln -sf /usr/bin/gcc14-gcc /usr/local/bin/cc
-          ln -sf /usr/bin/gcc14-g++ /usr/local/bin/c++
-
-      - name: Install Rust
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set version variables
-        run: |
-          source ./duckdb_version
-          echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
-          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
-
-      - name: Clone DuckDB
-        run: |
-          git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
-
-      - name: Clone lance-duckdb
-        run: |
-          git clone --depth 1 --branch $LANCE_DUCKDB_VER https://github.com/lance-format/lance-duckdb.git
-
-      - name: Cache Rust build artifacts
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            lance-duckdb/target
-          key: ${{ runner.os }}-${{ matrix.arch }}-cargo-${{ hashFiles('lance-duckdb/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-cargo-
-
-      - name: Build DuckDB lance bundle
-        run: |
-          pushd duckdb
-          mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
-
-          export CC=/usr/bin/gcc14-gcc
-          export CXX=/usr/bin/gcc14-g++
-          export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
-          export CXXFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
-          export CFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
-          export MAKEFLAGS="-j$(nproc)"
-          export PATH="$HOME/.cargo/bin:$PATH"
-          export RUSTFLAGS="-C strip=debuginfo"
-          export CARGO_PROFILE_RELEASE_OPT_LEVEL=z
-          export CARGO_PROFILE_RELEASE_PANIC=abort
-          export CARGO_PROFILE_RELEASE_LTO=thin
-          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
-
-          echo "Compiler version:"
-          $CXX --version | head -1
-          echo "Rust version:"
-          cargo --version
+          if [ "${{ matrix.bundle }}" = "lance" ]; then
+            export PATH="$HOME/.cargo/bin:$PATH"
+            export RUSTFLAGS="-C strip=debuginfo"
+            export CARGO_PROFILE_RELEASE_OPT_LEVEL=z
+            export CARGO_PROFILE_RELEASE_PANIC=abort
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+            echo "Rust version:"
+            cargo --version
+            EXTENSION_CONFIGS="EXTENSION_CONFIGS=$(pwd)/../lance-duckdb/extension_config.cmake"
+          fi
 
           GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
-          BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
-          EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake" \
+          BUILD_EXTENSIONS="${{ matrix.build_extensions }}" \
+          ${EXTENSION_CONFIGS:-} \
           EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
           make bundle-library
           objcopy --strip-debug build/release/libduckdb_bundle.a
           popd
 
-      - name: Package lance library
+      - name: Package bundle
         run: |
-          mkdir -p /tmp/lance-pkg
-          cp duckdb/build/release/libduckdb_bundle.a /tmp/lance-pkg/
-          find duckdb/build/release -name "liblance_extension.a" -exec cp {} /tmp/lance-pkg/ \;
-          find duckdb/build/release -name "liblance_duckdb_ffi.a" -exec cp {} /tmp/lance-pkg/ \;
+          mkdir -p /tmp/pkg
+          cp duckdb/build/release/libduckdb_bundle.a /tmp/pkg/
+          if [ "${{ matrix.bundle }}" = "lance" ]; then
+            find duckdb/build/release -name "liblance_duckdb_ffi.a" -exec cp {} /tmp/pkg/ \;
+          fi
           echo "Package contents:"
-          ls -lh /tmp/lance-pkg/
-          tar -cJf libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz -C /tmp/lance-pkg .
+          ls -lh /tmp/pkg/
+          tar -cJf libduckdb_bundle${{ matrix.artifact_suffix }}-${{ matrix.arch }}.tar.xz -C /tmp/pkg .
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: libduckdb-lance-${{ matrix.arch }}
-          path: libduckdb_bundle_lance-${{ matrix.arch }}.tar.xz
+          name: libduckdb${{ matrix.artifact_suffix }}-${{ matrix.arch }}
+          path: libduckdb_bundle${{ matrix.artifact_suffix }}-${{ matrix.arch }}.tar.xz
           retention-days: 1
 
   release:
-    needs: [build, build-lance]
+    needs: build
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
 
@@ -242,6 +189,6 @@ jobs:
 
             **Variants:**
             - `libduckdb_bundle-{arch}.tar.xz` — DuckDB with httpfs, parquet, icu, json
-            - `libduckdb_bundle_lance-{arch}.tar.xz` — DuckDB with httpfs, icu, json, lance
+            - `libduckdb_bundle_lance-{arch}.tar.xz` — DuckDB with httpfs, parquet, icu, json, lance
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
