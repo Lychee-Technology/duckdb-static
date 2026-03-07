@@ -4,7 +4,7 @@ GO_VERSION ?= 1.25.5
 # Target architecture (override via command line, e.g. make ARCH=amd64)
 ARCH ?= arm64
 # Bundle type: parquet (default) or lance
-BUNDLE ?= parquet
+BUNDLE ?= lance
 
 export DOCKER_BUILDKIT := 1
 
@@ -32,11 +32,12 @@ endif
 
 .PHONY: clean download-libduckdb_bundle build-DuckDBExampleFunction
 
-build-DuckDBExampleFunction: download-libduckdb_bundle
+build-DuckDBExampleFunction:
 	@echo "Building with Docker (ARCH=$(ARCH), BUNDLE=$(BUNDLE))..."
 	@echo "Using Go Version: $(GO_VERSION)"
 	@mkdir -p $(ARTIFACTS_DIR)
 	@docker build \
+	--progress=plain \
 	--platform $(DOCKER_PLATFORM) \
 	--build-arg GO_VERSION=$(GO_VERSION) \
 	--build-arg GO_ARCH=$(GO_DOWNLOAD_ARCH) \

@@ -132,7 +132,7 @@ func main() {
 	db.SetConnMaxIdleTime(time.Minute * 2)
 	defer db.Close()
 
-	if err := loadExtension(db, []string{"httpfs"}); err != nil {
+	if err := loadExtension(db, []string{"httpfs", "lance"}); err != nil {
 		fmt.Printf("loadExtension failed: %v", err)
 		return
 	}
@@ -167,7 +167,7 @@ func main() {
 	hc := &handlerContext{db: db}
 
 	// Select handler based on BUNDLE_TYPE env var ("lance" or "parquet")
-	bundleType := getEnvWithDefault("BUNDLE_TYPE", "parquet")
+	bundleType := getEnvWithDefault("BUNDLE_TYPE", "lance")
 	fmt.Printf("bundle type: %s\n", bundleType)
 
 	if bundleType == "lance" {
