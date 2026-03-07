@@ -62,8 +62,8 @@ jobs:
           export CC=/usr/bin/gcc14-gcc
           export CXX=/usr/bin/gcc14-g++
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
-          export CXXFLAGS="${{ matrix.CXXFLAGS }}"
-          export CFLAGS="${{ matrix.CXXFLAGS }}"
+          export CXXFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
+          export CFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
           export MAKEFLAGS="-j$(nproc)"
 
           echo "Compiler version:"
@@ -75,7 +75,9 @@ jobs:
           DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
           BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
+          EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
           make bundle-library
+          objcopy --strip-debug build/release/libduckdb_bundle.a
           popd
 
       - name: Package library
@@ -169,8 +171,8 @@ jobs:
           export CC=/usr/bin/gcc14-gcc
           export CXX=/usr/bin/gcc14-g++
           export LDFLAGS="-Wl,--gc-sections -Wl,--strip-all"
-          export CXXFLAGS="${{ matrix.CXXFLAGS }}"
-          export CFLAGS="${{ matrix.CXXFLAGS }}"
+          export CXXFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
+          export CFLAGS="${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections"
           export MAKEFLAGS="-j$(nproc)"
           export PATH="$HOME/.cargo/bin:$PATH"
           export RUSTFLAGS="-C strip=debuginfo"
@@ -190,7 +192,9 @@ jobs:
           DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
           EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake" \
+          EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
           make bundle-library
+          objcopy --strip-debug build/release/libduckdb_bundle.a
           popd
 
       - name: Package lance library
