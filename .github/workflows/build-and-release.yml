@@ -189,9 +189,9 @@ jobs:
           GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
-          DISABLE_EXTENSION_LOAD=0 \
+          DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
-          BUILD_EXTENSIONS="icu;json;" \
+          BUILD_EXTENSIONS="httpfs;parquet;icu;json;" \
           EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake" \
           EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
           make bundle-library

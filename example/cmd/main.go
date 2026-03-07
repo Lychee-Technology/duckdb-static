@@ -64,7 +64,7 @@ func (hc *handlerContext) lanceHandler(ctx context.Context, request any) (string
 
 	// Read it back
 	rows, err := hc.db.QueryContext(ctx, fmt.Sprintf(
-		`SELECT id, label FROM lance_scan('%s') ORDER BY id LIMIT 5`, lanceDir))
+		`SELECT id, label FROM '%s' ORDER BY id LIMIT 5`, lanceDir))
 	if err != nil {
 		return "", fmt.Errorf("lance_scan failed: %v", err)
 	}
@@ -139,15 +139,15 @@ func main() {
 
 	begin := time.Now().UnixNano()
 	_, err = db.Exec(`CREATE OR REPLACE SECRET secret (
-		TYPE S3,
+		TYPE LANCE,
 		PROVIDER config,
 		ENDPOINT ?,
-		KEY_ID ?,
-		SECRET ?,
+		ACCESS_KEY_ID ?,
+		SECRET_ACCESS_KEY ?,
 		SESSION_TOKEN ?,
 		REGION ?,
-		USE_SSL ?,
-		URL_STYLE ?
+		ALLOW_HTTP ?,
+		VIRTUAL_HOSTED_STYLE_REQUEST ?
 	);`,
 		os.Getenv("S3_ENDPOINT"),
 		os.Getenv("AWS_ACCESS_KEY_ID"),
@@ -155,7 +155,7 @@ func main() {
 		os.Getenv("AWS_SESSION_TOKEN"),
 		os.Getenv("AWS_REGION"),
 		getEnvWithDefault("S3_USE_SSL", "true"),
-		getEnvWithDefault("S3_URL_STYLE", "vhost"),
+		getEnvWithDefault("S3_URL_STYLE", "false"),
 	)
 	end := time.Now().UnixNano()
 	fmt.Printf("CREATE secret took %d ms\n", (end-begin)/1e6)
