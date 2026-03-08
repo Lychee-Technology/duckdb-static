@@ -108,6 +108,8 @@ jobs:
           git clone --depth 1 --branch $LANCE_DUCKDB_VER https://github.com/lance-format/lance-duckdb.git
           ln -s $(realpath duckdb) lance-duckdb/duckdb
           git clone --depth 1 --branch $DUCKDB_EXTENSION_CI_TOOLS_BRANCH https://github.com/duckdb/extension-ci-tools.git lance-duckdb/extension-ci-tools
+          # Update Cargo.lock so cargo uses the cloned vortex version instead of the pinned one
+          cd lance-duckdb && cargo update --workspace 2>/dev/null || true
 
       - name: Clone duckdb-vortex and update submodules
         if: contains(matrix.flavor, 'vortex')
@@ -116,6 +118,8 @@ jobs:
           ln -s $(realpath duckdb) duckdb-vortex/duckdb
           git clone --depth 1 --branch $DUCKDB_EXTENSION_CI_TOOLS_BRANCH https://github.com/duckdb/extension-ci-tools.git duckdb-vortex/extension-ci-tools
           git clone --depth 1 --branch $VORTEX_VER https://github.com/vortex-data/vortex.git duckdb-vortex/vortex
+          # Update Cargo.lock so cargo uses the cloned vortex version instead of the pinned one
+          cd duckdb-vortex && cargo update --workspace 2>/dev/null || true
 
       - name: Cache Rust build artifacts (vortex)
         if: contains(matrix.flavor, 'vortex')

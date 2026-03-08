@@ -5,3 +5,9 @@
 *.zip
 libs/
 .claude
+*.parquet
+*.csv
+*.json
+*.log
+*.vortex
+data/
