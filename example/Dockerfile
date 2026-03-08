@@ -9,6 +9,7 @@ FROM public.ecr.aws/amazonlinux/amazonlinux:2023 AS builder
 ARG GO_VERSION=1.25.6
 ARG GOOS=linux
 ARG GO_ARCH=arm64
+ARG CGO_EXTRA_LDFLAGS=""
 
 # 1. Install Toolchain and Dependencies
 RUN dnf -y update && \
@@ -35,9 +36,10 @@ ENV GOOS=${GOOS} \
     GOMODCACHE=/go/pkg/mod
 
 # DuckDB specific flags
-# Note: -L/src/libs assumes you have a 'libs' folder in your project root containing the `duckdb_bundle.a` static library.
+# Note: -L/src/libs assumes you have a 'libs' folder in your project root containing the static libraries.
+# CGO_EXTRA_LDFLAGS is injected by the Makefile for lance builds (e.g. -llance_duckdb_ffi).
 ENV CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
-    CGO_LDFLAGS="-L/src/libs -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread"
+    CGO_LDFLAGS="-L/src/libs -lduckdb_bundle ${CGO_EXTRA_LDFLAGS} -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"
 
 WORKDIR /src
 
