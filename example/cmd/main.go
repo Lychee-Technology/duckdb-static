@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -13,23 +14,24 @@ import (
 )
 
 type handlerContext struct {
-	db     *sql.DB
-	flavor string
+	db      *sql.DB
+	flavor  string
+	dataDir string
 }
 
-func sqlByFlavor(flavor string) string {
+func sqlByFlavor(flavor, dataDir string) string {
 	switch flavor {
 	case "lance":
-		return `SELECT avg(array_length(tokens)) FROM "data/imdb_processed.lance"`
+		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM "%s/imdb_processed.lance"`, dataDir)
 	case "vortex":
-		return `SELECT avg(array_length(tokens)) FROM read_vortex("file://./data/imdb_processed.vortex")`
+		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_vortex("%s/imdb_processed.vortex")`, dataDir)
 	default: // parquet
-		return `SELECT avg(array_length(tokens)) FROM read_parquet("./data/imdb_processed.parquet")`
+		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
 	}
 }
 
 func (hc *handlerContext) handler(ctx context.Context, _ any) (string, error) {
-	query := sqlByFlavor(hc.flavor)
+	query := sqlByFlavor(hc.flavor, hc.dataDir)
 	rows, err := hc.db.QueryContext(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("query failed: %v", err)
@@ -94,7 +96,14 @@ func main() {
 		return
 	}
 
-	fmt.Printf("flavor: %s\n", flavor)
-	hc := &handlerContext{db: db, flavor: flavor}
+	wd, err := os.Getwd()
+	if err != nil {
+		fmt.Printf("getwd failed: %v\n", err)
+		return
+	}
+	dataDir := filepath.Join(wd, "data")
+
+	fmt.Printf("flavor: %s, dataDir: %s\n", flavor, dataDir)
+	hc := &handlerContext{db: db, flavor: flavor, dataDir: dataDir}
 	lambda.Start(hc.handler)
 }
