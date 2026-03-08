@@ -23,12 +23,14 @@ Using DuckDB with extensions in ephemeral environments often leads to runtime er
 
 This bundle is built on **Amazon Linux 2023** and comes pre-packaged with the most essential extensions:
 
-| Extension | Description                              |
-| :-------- | :--------------------------------------- |
-| `json`    | JSON manipulation and querying           |
-| `icu`     | International Components for Unicode     |
-| `httpfs`  | HTTP file system support (S3, GCS, etc.) |
-| `parquet` | Parquet columnar file format support     |
+| Extension | Description                                                |
+| :-------- | :--------------------------------------------------------- |
+| `json`    | JSON manipulation and querying                             |
+| `icu`     | International Components for Unicode                       |
+| `httpfs`  | HTTP file system support (S3, GCS, etc.)                   |
+| `parquet` | Parquet columnar file format support                       |
+| `lance`   | [Lance](https://lance.org/) columnar file format support   |
+| `vortext` | [Vortex](https://vortex.dev/) columnar file format support |
 
 
 ## How It Works
