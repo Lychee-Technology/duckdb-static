@@ -83,11 +83,15 @@ jobs:
 
       - name: Install latest CMake
         run: |
-          wget -O cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-linux-x86_64.tar.gz
-          
+          CMAKE_VER="3.31.10"
+          case "${{ matrix.platform }}" in
+            amd64-linux)  CMAKE_ARCH="linux-x86_64" ;;
+            arm64-linux)  CMAKE_ARCH="linux-aarch64" ;;
+            *) echo "Unsupported platform: ${{ matrix.platform }}"; exit 1 ;;
+          esac
+          wget -O cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v${CMAKE_VER}/cmake-${CMAKE_VER}-${CMAKE_ARCH}.tar.gz
           tar -zxvf cmake.tar.gz
-          cp -r cmake/* /usr/local/
-          
+          cp -r cmake-${CMAKE_VER}-${CMAKE_ARCH}/* /usr/local/
           cmake --version
 
       - name: Install Rust toolchain
