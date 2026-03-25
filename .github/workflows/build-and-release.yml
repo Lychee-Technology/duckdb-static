@@ -67,7 +67,7 @@ jobs:
         run: |
           dnf update -y
           dnf install --allowerasing \
-            tar gzip xz git cmake \
+            wget tar gzip xz git \
             gcc14 gcc14-c++ \
             make curl ninja-build patch \
             openssl-devel zlib-devel libcurl-devel \
@@ -80,6 +80,15 @@ jobs:
             bzip2-devel protobuf-compiler protobuf-devel -y
           ln -sf /usr/bin/gcc14-gcc /usr/local/bin/cc
           ln -sf /usr/bin/gcc14-g++ /usr/local/bin/c++
+
+      - name: Install latest CMake
+        run: |
+          wget -O cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v3.31.10/cmake-3.31.10-linux-x86_64.tar.gz
+          
+          tar -zxvf cmake.tar.gz
+          cp -r cmake/* /usr/local/
+          
+          cmake --version
 
       - name: Install Rust toolchain
         if: contains(matrix.flavor, 'vortex') || contains(matrix.flavor, 'lance')
