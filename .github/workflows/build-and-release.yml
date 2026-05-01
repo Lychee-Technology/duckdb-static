@@ -233,6 +233,17 @@ jobs:
     if: github.ref_type == 'tag'
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set version variables
+        run: |
+          source ./duckdb_version
+          echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
+          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
+          echo "DUCKDB_VORTEX_BRANCH=$DUCKDB_VORTEX_BRANCH" >> $GITHUB_ENV
+          echo "VORTEX_VER=$VORTEX_VER" >> $GITHUB_ENV
+
       - name: Download artifacts
         uses: actions/download-artifact@v7
         with:
@@ -252,8 +263,14 @@ jobs:
           body: |
             Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
 
+            **Versions:**
+            - DuckDB: `${{ env.DUCKDB_VER }}`
+            - Vortex: `${{ env.VORTEX_VER }}` (branch: `${{ env.DUCKDB_VORTEX_BRANCH }}`)
+            - Lance DuckDB: `${{ env.LANCE_DUCKDB_VER }}`
+
             **Variants:**
-            - `libduckdb_bundle-{arch}.tar.xz` — DuckDB with httpfs, parquet, icu, json
-            - `libduckdb_bundle-lance-{arch}.tar.xz` — DuckDB with httpfs, parquet, icu, json, lance
+            - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with httpfs, parquet, icu, json
+            - `libduckdb_bundle-{platform}-httpfs-parquet-vortex.tar.xz` — DuckDB with httpfs, parquet, icu, json, vortex
+            - `libduckdb_bundle-{platform}-httpfs-parquet-lance.tar.xz` — DuckDB with httpfs, parquet, icu, json, lance
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
