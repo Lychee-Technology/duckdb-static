@@ -221,7 +221,7 @@ jobs:
           tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C /tmp/pkg .
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libduckdb-${{ matrix.arch }}-${{ matrix.flavor }}
           path: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
