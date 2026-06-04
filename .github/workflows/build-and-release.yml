@@ -28,34 +28,34 @@ jobs:
             flavor: 'httpfs-parquet'
             DUCKDB_PLATFORM: linux_amd64
             CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
-          - arch: arm64
-            runner: 'ubuntu-24.04-arm'
-            platform: arm64-linux
-            build_extensions: 'httpfs;json;icu;parquet;'
-            flavor: 'httpfs-parquet-vortex'
-            DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
-          - arch: amd64
-            runner: 'ubuntu-latest'
-            platform: amd64-linux
-            build_extensions: 'httpfs;json;icu;parquet;'
-            flavor: 'httpfs-parquet-vortex'
-            DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
-          - arch: arm64
-            runner: 'ubuntu-24.04-arm'
-            platform: arm64-linux
-            build_extensions: 'httpfs;parquet;icu;json;'
-            flavor: 'httpfs-parquet-lance'
-            DUCKDB_PLATFORM: linux_arm64
-            CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
-          - arch: amd64
-            runner: 'ubuntu-latest'
-            platform: amd64-linux
-            build_extensions: 'httpfs;parquet;icu;json;'
-            flavor: 'httpfs-parquet-lance'
-            DUCKDB_PLATFORM: linux_amd64
-            CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
+          # - arch: arm64
+          #   runner: 'ubuntu-24.04-arm'
+          #   platform: arm64-linux
+          #   build_extensions: 'httpfs;json;icu;parquet;'
+          #   flavor: 'httpfs-parquet-vortex'
+          #   DUCKDB_PLATFORM: linux_arm64
+          #   CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
+          # - arch: amd64
+          #   runner: 'ubuntu-latest'
+          #   platform: amd64-linux
+          #   build_extensions: 'httpfs;json;icu;parquet;'
+          #   flavor: 'httpfs-parquet-vortex'
+          #   DUCKDB_PLATFORM: linux_amd64
+          #   CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
+          # - arch: arm64
+          #   runner: 'ubuntu-24.04-arm'
+          #   platform: arm64-linux
+          #   build_extensions: 'httpfs;parquet;icu;json;'
+          #   flavor: 'httpfs-parquet-lance'
+          #   DUCKDB_PLATFORM: linux_arm64
+          #   CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
+          # - arch: amd64
+          #   runner: 'ubuntu-latest'
+          #   platform: amd64-linux
+          #   build_extensions: 'httpfs;parquet;icu;json;'
+          #   flavor: 'httpfs-parquet-lance'
+          #   DUCKDB_PLATFORM: linux_amd64
+          #   CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
 
     runs-on: ${{ matrix.runner }}
 
