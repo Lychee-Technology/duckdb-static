@@ -15,23 +15,15 @@ import (
 
 type handlerContext struct {
 	db      *sql.DB
-	flavor  string
 	dataDir string
 }
 
-func sqlByFlavor(flavor, dataDir string) string {
-	switch flavor {
-	case "lance":
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM "%s/imdb_processed.lance"`, dataDir)
-	case "vortex":
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_vortex("%s/imdb_processed.vortex")`, dataDir)
-	default: // parquet
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
-	}
+func sqlByFlavor(dataDir string) string {
+	return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
 }
 
 func (hc *handlerContext) handler(ctx context.Context, _ any) (string, error) {
-	query := sqlByFlavor(hc.flavor, hc.dataDir)
+	query := sqlByFlavor(hc.dataDir)
 	rows, err := hc.db.QueryContext(ctx, query)
 	if err != nil {
 		return "", fmt.Errorf("query failed: %v", err)
@@ -65,11 +57,6 @@ func loadExtensions(db *sql.DB, names []string) error {
 }
 
 func main() {
-	flavor := os.Getenv("FLAVOR")
-	if flavor == "" {
-		flavor = "parquet"
-	}
-
 	db, err := sql.Open("duckdb", ":memory:")
 	if err != nil {
 		fmt.Printf("open duckdb failed: %v\n", err)
@@ -81,15 +68,7 @@ func main() {
 	db.SetConnMaxIdleTime(time.Minute * 2)
 	defer db.Close()
 
-	var extensions []string
-	switch flavor {
-	case "lance":
-		extensions = []string{"lance"}
-	case "vortex":
-		extensions = []string{"vortex"}
-	default: // parquet
-		extensions = []string{"parquet"}
-	}
+	extensions := []string{"parquet"}
 
 	if err := loadExtensions(db, extensions); err != nil {
 		fmt.Printf("loadExtensions failed: %v\n", err)
@@ -103,7 +82,7 @@ func main() {
 	}
 	dataDir := filepath.Join(wd, "data")
 
-	fmt.Printf("flavor: %s, dataDir: %s\n", flavor, dataDir)
-	hc := &handlerContext{db: db, flavor: flavor, dataDir: dataDir}
+	fmt.Printf("dataDir: %s\n", dataDir)
+	hc := &handlerContext{db: db, dataDir: dataDir}
 	lambda.Start(hc.handler)
 }

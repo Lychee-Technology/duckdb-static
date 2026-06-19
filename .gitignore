@@ -9,5 +9,4 @@ libs/
 *.csv
 *.json
 *.log
-*.vortex
 data/

@@ -26,31 +26,3 @@ Resources:
       Environment:
         Variables:
           FLAVOR: parquet
-
-  DuckDBLanceFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: makefile
-    Properties:
-      CodeUri: .
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Architectures:
-        - arm64
-      Environment:
-        Variables:
-          FLAVOR: lance
-
-  DuckDBVortexFunction:
-    Type: AWS::Serverless::Function
-    Metadata:
-      BuildMethod: makefile
-    Properties:
-      CodeUri: .
-      Handler: bootstrap
-      Runtime: provided.al2023
-      Architectures:
-        - arm64
-      Environment:
-        Variables:
-          FLAVOR: vortex

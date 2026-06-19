@@ -37,8 +37,7 @@ ENV GOOS=${GOOS} \
     GOMODCACHE=/go/pkg/mod
 
 # DuckDB specific flags
-# LIBS_DIR points to the flavor-specific libs directory (e.g. libs/parquet, libs/lance, libs/vortex).
-# CGO_EXTRA_LDFLAGS is injected by the Makefile for non-parquet builds (e.g. -llance_duckdb_ffi, -lvortex_duckdb).
+# LIBS_DIR points to the flavor-specific libs directory (e.g. libs/parquet).
 ENV CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
     CGO_LDFLAGS="-L/src/${LIBS_DIR} -lduckdb_bundle ${CGO_EXTRA_LDFLAGS} -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"
 

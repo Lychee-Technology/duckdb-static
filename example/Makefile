@@ -21,8 +21,6 @@ endif
 
 .PHONY: clean \
 	build-DuckDBParquetFunction \
-	build-DuckDBLanceFunction \
-	build-DuckDBVortexFunction \
 	download-libs
 
 build-DuckDBParquetFunction:
@@ -40,51 +38,10 @@ build-DuckDBParquetFunction:
 		.
 	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
 
-build-DuckDBLanceFunction:
-	@echo "Building DuckDBLanceFunction (ARCH=$(ARCH))..."
-	@echo "Using Go Version: $(GO_VERSION)"
-	@mkdir -p $(ARTIFACTS_DIR)
-	@docker build \
-		--progress=plain \
-		--platform $(DOCKER_PLATFORM) \
-		--build-arg GO_VERSION=$(GO_VERSION) \
-		--build-arg GO_ARCH=$(GO_DOWNLOAD_ARCH) \
-		--build-arg LIBS_DIR=libs/lance \
-		--build-arg CGO_EXTRA_LDFLAGS="-llance_duckdb_ffi" \
-		--output type=local,dest=$(ARTIFACTS_DIR) \
-		--target exporter \
-		.
-	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
-
-build-DuckDBVortexFunction:
-	@echo "Building DuckDBVortexFunction (ARCH=$(ARCH))..."
-	@echo "Using Go Version: $(GO_VERSION)"
-	@mkdir -p $(ARTIFACTS_DIR)
-	@docker build \
-		--progress=plain \
-		--platform $(DOCKER_PLATFORM) \
-		--build-arg GO_VERSION=$(GO_VERSION) \
-		--build-arg GO_ARCH=$(GO_DOWNLOAD_ARCH) \
-		--build-arg LIBS_DIR=libs/vortex \
-		--build-arg CGO_EXTRA_LDFLAGS="-lvortex_duckdb" \
-		--output type=local,dest=$(ARTIFACTS_DIR) \
-		--target exporter \
-		.
-	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
-
 # download-libs
 # Downloads the matching release asset from the duckdb-static GitHub releases.
-# Use FLAVOR=parquet|lance|vortex (default: parquet). Set FORCE=1 to re-download.
 FLAVOR ?= parquet
-
-ifeq ($(FLAVOR),lance)
-	ASSET_FLAVOR := httpfs-parquet-lance
-else ifeq ($(FLAVOR),vortex)
-	ASSET_FLAVOR := httpfs-parquet-vortex
-else
-	ASSET_FLAVOR := httpfs-parquet
-endif
-
+ASSET_FLAVOR := httpfs-parquet
 LIBS_DIR := libs/$(FLAVOR)
 
 download-libs:

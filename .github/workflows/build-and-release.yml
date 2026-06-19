@@ -28,34 +28,6 @@ jobs:
             flavor: 'httpfs-parquet'
             DUCKDB_PLATFORM: linux_amd64
             CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
-          # - arch: arm64
-          #   runner: 'ubuntu-24.04-arm'
-          #   platform: arm64-linux
-          #   build_extensions: 'httpfs;json;icu;parquet;'
-          #   flavor: 'httpfs-parquet-vortex'
-          #   DUCKDB_PLATFORM: linux_arm64
-          #   CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
-          # - arch: amd64
-          #   runner: 'ubuntu-latest'
-          #   platform: amd64-linux
-          #   build_extensions: 'httpfs;json;icu;parquet;'
-          #   flavor: 'httpfs-parquet-vortex'
-          #   DUCKDB_PLATFORM: linux_amd64
-          #   CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
-          # - arch: arm64
-          #   runner: 'ubuntu-24.04-arm'
-          #   platform: arm64-linux
-          #   build_extensions: 'httpfs;parquet;icu;json;'
-          #   flavor: 'httpfs-parquet-lance'
-          #   DUCKDB_PLATFORM: linux_arm64
-          #   CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
-          # - arch: amd64
-          #   runner: 'ubuntu-latest'
-          #   platform: amd64-linux
-          #   build_extensions: 'httpfs;parquet;icu;json;'
-          #   flavor: 'httpfs-parquet-lance'
-          #   DUCKDB_PLATFORM: linux_amd64
-          #   CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
 
     runs-on: ${{ matrix.runner }}
 
@@ -73,14 +45,6 @@ jobs:
             openssl-devel zlib-devel libcurl-devel \
             python3 -y
 
-      - name: Install lance dependencies
-        if: contains(matrix.flavor, 'lance')
-        run: |
-          dnf install --allowerasing \
-            bzip2-devel protobuf-compiler protobuf-devel -y
-          ln -sf /usr/bin/gcc14-gcc /usr/local/bin/cc
-          ln -sf /usr/bin/gcc14-g++ /usr/local/bin/c++
-
       - name: Install latest CMake
         run: |
           CMAKE_VER="3.31.10"
@@ -94,12 +58,6 @@ jobs:
           cp -rf cmake-${CMAKE_VER}-${CMAKE_ARCH}/* /usr/local/ 2>/dev/null
           cmake --version
 
-      - name: Install Rust toolchain
-        if: contains(matrix.flavor, 'vortex') || contains(matrix.flavor, 'lance')
-        run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
-          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
-
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -107,56 +65,10 @@ jobs:
         run: |
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
-          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
-          echo "DUCKDB_VORTEX_BRANCH=$DUCKDB_VORTEX_BRANCH" >> $GITHUB_ENV
           echo "DUCKDB_EXTENSION_CI_TOOLS_BRANCH=$DUCKDB_EXTENSION_CI_TOOLS_BRANCH" >> $GITHUB_ENV
-          echo "VORTEX_VER=$VORTEX_VER" >> $GITHUB_ENV
 
       - name: Clone DuckDB
         run: git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
-
-      - name: Clone lance-duckdb and update submodules
-        if: contains(matrix.flavor, 'lance')
-        run: |
-          git clone --depth 1 --branch $LANCE_DUCKDB_VER https://github.com/lance-format/lance-duckdb.git
-          ln -s $(realpath duckdb) lance-duckdb/duckdb
-          git clone --depth 1 --branch $DUCKDB_EXTENSION_CI_TOOLS_BRANCH https://github.com/duckdb/extension-ci-tools.git lance-duckdb/extension-ci-tools
-          # Update Cargo.lock so cargo uses the cloned vortex version instead of the pinned one
-          cd lance-duckdb && cargo update --workspace || true
-
-      - name: Clone duckdb-vortex and update submodules
-        if: contains(matrix.flavor, 'vortex')
-        run: |
-          git clone --depth 1 --branch $DUCKDB_VORTEX_BRANCH https://github.com/vortex-data/duckdb-vortex.git
-          ln -s $(realpath duckdb) duckdb-vortex/duckdb
-          git clone --depth 1 --branch $DUCKDB_EXTENSION_CI_TOOLS_BRANCH https://github.com/duckdb/extension-ci-tools.git duckdb-vortex/extension-ci-tools
-          git clone --depth 1 --branch $VORTEX_VER https://github.com/vortex-data/vortex.git duckdb-vortex/vortex
-          # Update Cargo.lock so cargo uses the cloned vortex version instead of the pinned one
-          cd duckdb-vortex && cargo update --workspace || true
-
-      - name: Cache Rust build artifacts (vortex)
-        if: contains(matrix.flavor, 'vortex')
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            duckdb-vortex/vortex/target
-          key: ${{ runner.os }}-${{ matrix.arch }}-vortex-${{ hashFiles('duckdb-vortex/vortex/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-vortex-
-
-      - name: Cache Rust build artifacts (lance)
-        if: contains(matrix.flavor, 'lance')
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            lance-duckdb/target
-          key: ${{ runner.os }}-${{ matrix.arch }}-lance-${{ hashFiles('lance-duckdb/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-lance-
 
       - name: Build DuckDB bundle
         run: |
@@ -173,28 +85,6 @@ jobs:
           echo "Compiler version:"
           $CXX --version | head -1
 
-          if [[ "${{ matrix.flavor }}" == *"lance"* ]]; then
-            export RUSTFLAGS="-C strip=debuginfo"
-            export CARGO_PROFILE_RELEASE_OPT_LEVEL=z
-            export CARGO_PROFILE_RELEASE_PANIC=abort
-            export CARGO_PROFILE_RELEASE_LTO=thin
-            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
-            export EXTENSION_CONFIGS="$(pwd)/../lance-duckdb/extension_config.cmake"
-            echo "Rust version:"
-            cargo --version
-          fi
-
-          if [[ "${{ matrix.flavor }}" == *"vortex"* ]]; then
-            export RUSTFLAGS="-C strip=debuginfo"
-            export CARGO_PROFILE_RELEASE_OPT_LEVEL=z
-            export CARGO_PROFILE_RELEASE_PANIC=abort
-            export CARGO_PROFILE_RELEASE_LTO=thin
-            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
-            export EXTENSION_CONFIGS="$(pwd)/../duckdb-vortex/extension_config.cmake"
-            echo "Rust version:"
-            cargo --version
-          fi
-
           GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
@@ -210,12 +100,6 @@ jobs:
         run: |
           mkdir -p /tmp/pkg
           cp duckdb/build/release/libduckdb_bundle.a /tmp/pkg/
-          if [[ "${{ matrix.flavor }}" == *"vortex"* ]]; then
-            find duckdb/build/release -name "libvortex_duckdb.a" -exec cp {} /tmp/pkg/ \;
-          fi
-          if [[ "${{ matrix.flavor }}" == *"lance"* ]]; then
-            find duckdb/build/release -name "liblance_duckdb_ffi.a" -exec cp {} /tmp/pkg/ \;
-          fi
           echo "Package contents:"
           ls -lh /tmp/pkg/
           tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C /tmp/pkg .
@@ -240,9 +124,6 @@ jobs:
         run: |
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
-          echo "LANCE_DUCKDB_VER=$LANCE_DUCKDB_VER" >> $GITHUB_ENV
-          echo "DUCKDB_VORTEX_BRANCH=$DUCKDB_VORTEX_BRANCH" >> $GITHUB_ENV
-          echo "VORTEX_VER=$VORTEX_VER" >> $GITHUB_ENV
 
       - name: Download artifacts
         uses: actions/download-artifact@v7
@@ -265,12 +146,8 @@ jobs:
 
             **Versions:**
             - DuckDB: `${{ env.DUCKDB_VER }}`
-            - Vortex: `${{ env.VORTEX_VER }}` (branch: `${{ env.DUCKDB_VORTEX_BRANCH }}`)
-            - Lance DuckDB: `${{ env.LANCE_DUCKDB_VER }}`
 
             **Variants:**
             - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with httpfs, parquet, icu, json
-            - `libduckdb_bundle-{platform}-httpfs-parquet-vortex.tar.xz` — DuckDB with httpfs, parquet, icu, json, vortex
-            - `libduckdb_bundle-{platform}-httpfs-parquet-lance.tar.xz` — DuckDB with httpfs, parquet, icu, json, lance
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
