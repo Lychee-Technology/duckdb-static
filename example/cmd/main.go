@@ -20,14 +20,7 @@ type handlerContext struct {
 }
 
 func sqlByFlavor(flavor, dataDir string) string {
-	switch flavor {
-	case "lance":
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM "%s/imdb_processed.lance"`, dataDir)
-	case "vortex":
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_vortex("%s/imdb_processed.vortex")`, dataDir)
-	default: // parquet
-		return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
-	}
+	return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
 }
 
 func (hc *handlerContext) handler(ctx context.Context, _ any) (string, error) {
@@ -81,17 +74,7 @@ func main() {
 	db.SetConnMaxIdleTime(time.Minute * 2)
 	defer db.Close()
 
-	var extensions []string
-	switch flavor {
-	case "lance":
-		extensions = []string{"lance"}
-	case "vortex":
-		extensions = []string{"vortex"}
-	default: // parquet
-		extensions = []string{"parquet"}
-	}
-
-	if err := loadExtensions(db, extensions); err != nil {
+	if err := loadExtensions(db, []string{"parquet"}); err != nil {
 		fmt.Printf("loadExtensions failed: %v\n", err)
 		return
 	}
