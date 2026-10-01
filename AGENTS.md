@@ -59,12 +59,14 @@ How the static link works (`example/Dockerfile`):
 - The build image is AL2023 with gcc14, matching both CI and the Lambda runtime.
 - It sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`.
 - `go build -tags=duckdb_use_static_lib` makes `duckdb-go` link the local `.a` instead of its bundled prebuilt libs.
-- The `exporter` stage copies `/src/data`, and `cmd/main.go` reads `data/imdb_processed.parquet` from the working directory. `data/`, `libs/` and `*.parquet` are gitignored, so `data/` must exist locally before building. `*.json` is also gitignored, so `env.json` is tracked only because it was force-added.
+- The `data` stage generates `data/sample.parquet` with the `duckdb/duckdb` CLI image, and the `exporter` stage puts it next to `bootstrap`. `cmd/main.go` reads it from the working directory (`/var/task` on Lambda), so a clean checkout needs no local data. The image tag doesn't have to match the bundle's DuckDB version. The stage's SQL produces an average of exactly 10.5 tokens per row, which `example/README.md` gives as the expected output.
 - The SAM resource name `DuckDBParquetFunction` must match the Makefile target `build-DuckDBParquetFunction`.
 - Extensions are compiled in, so the code uses `LOAD 'parquet'` with no `INSTALL`. Loading from disk is disabled in the bundle.
 - `GO_VERSION` is pinned both in `example/Makefile` and as the Dockerfile `ARG` default.
 
-`example/README.md` is partly stale. It refers to `make download-libduckdb_bundle`, `DuckDBExampleFunction`, `samconfig.toml`, and an S3/httpfs query. The actual target is `download-libs`, the function is `DuckDBParquetFunction`, and the query is a local parquet read. `env.json` is still keyed by the old `DuckDBExampleFunction` name.
+`example/README.md` is the user-facing version of this section. When the Makefile, Dockerfile, template, or query changes, update it too.
+
+On a host with rootless Podman and SELinux enforcing, `sam local invoke` fails with `fork/exec /var/task/bootstrap: permission denied`. If `docker` is only a shell alias for `podman`, `make` can't find it. The "Using Podman" section of `example/README.md` covers both.
 
 ## Non-code artifacts
 
