@@ -5,6 +5,17 @@ Description: >
 
   SAM Template for duckdb-static-bundle-example
 
+Parameters:
+  Architecture:
+    Type: String
+    Default: arm64
+    AllowedValues:
+      - arm64
+      - x86_64
+    Description: >
+      Lambda architecture. Must match the Makefile's ARCH, which builds the
+      binary: arm64 with ARCH=arm64, x86_64 with ARCH=amd64.
+
 Globals:
   Function:
     Timeout: 30
@@ -22,7 +33,7 @@ Resources:
       Handler: bootstrap
       Runtime: provided.al2023
       Architectures:
-        - arm64
+        - !Ref Architecture
       Environment:
         Variables:
           FLAVOR: parquet

@@ -2,6 +2,7 @@ ARTIFACTS_DIR ?= .aws-sam/build
 # Default Go version, can be overridden via command line
 GO_VERSION ?= 1.25.6
 # Target architecture (override via command line, e.g. make ARCH=amd64)
+# Must match the Architecture parameter in template.yaml (amd64 there is x86_64).
 ARCH ?= arm64
 
 export DOCKER_BUILDKIT := 1

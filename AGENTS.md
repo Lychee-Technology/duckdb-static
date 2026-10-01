@@ -32,9 +32,20 @@ The extension set shows up in three places that must stay in sync: the matrix `b
 
 When you test a build locally, build only for the host's own architecture (check with `uname -m`). Do not cross-compile. On an x86_64 host, don't try to build the arm64 bundle or the arm64 example, and on an aarch64 host, don't build amd64. That includes Docker `--platform` builds that run the other arch under QEMU emulation. CI builds each arch on a native runner (`ubuntu-24.04-arm` for arm64, `ubuntu-latest` for amd64), so leave the other arch to CI.
 
-The example defaults to arm64 (`ARCH ?= arm64` in `example/Makefile`, `ARG GO_ARCH=arm64` in the Dockerfile, `Architectures: arm64` in `template.yaml`). On an x86_64 host, set `ARCH=amd64` explicitly for `make download-libs` and `sam build` (for example `ARCH=amd64 sam build`), or you will end up cross-building for arm64.
+The example defaults to arm64, and its architecture is set in two places that must agree. `ARCH` in `example/Makefile` (default `arm64`) picks the release asset and the Docker/Go target. The Dockerfile's `ARG GO_ARCH=arm64` is only a fallback, because the Makefile always passes `GO_ARCH`. The `Architecture` parameter in `example/template.yaml` (default `arm64`) sets the function's Lambda architecture, which selects the runtime image for `sam local invoke` and the architecture `sam deploy` creates. On an x86_64 host, override both:
+
+```bash
+cd example
+ARCH=amd64 make download-libs
+ARCH=amd64 sam build --parameter-overrides Architecture=x86_64
+sam local invoke DuckDBParquetFunction --parameter-overrides Architecture=x86_64
+```
+
+Overriding only `ARCH` puts an amd64 binary in an arm64 function. Overriding neither builds and runs arm64 under emulation. The values differ because the release assets say `amd64` and Lambda says `x86_64`. `sam build` passes its environment to `make`, which is how `ARCH` reaches the Makefile. The built template still references the parameter, so `sam local invoke` and `sam deploy` need the override as well.
 
 ## Example (`example/`)
+
+The default (arm64) workflow. On an x86_64 host, use the commands in the previous section.
 
 ```bash
 cd example
