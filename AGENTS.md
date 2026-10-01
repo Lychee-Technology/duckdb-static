@@ -1,6 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# AGENTS.md
 
 ## What this repo is
 
@@ -28,7 +26,7 @@ The key invocation is `make bundle-library` run inside the DuckDB checkout with:
 - Per-arch `-march`: `armv8.2-a+crypto+fp16+dotprod+lse` on arm64 and `x86-64-v3` on amd64. The output will not run on older CPUs.
 - CMake is installed from Kitware tarballs (a pinned `CMAKE_VER`) because AL2023's CMake is too old.
 
-The extension set shows up in three places that must stay in sync: the matrix `build_extensions`, the README "What's Included?" table, and the release `body` text in the workflow. The asset name suffix (`flavor: httpfs-parquet`) is load-bearing: `example/Makefile` greps releases for it.
+The extension set shows up in three places that must stay in sync: the matrix `build_extensions`, the README "What's Included?" table, and the release `body` text in the workflow. Don't rename the asset name suffix (`flavor: httpfs-parquet`), because `example/Makefile` greps releases for it.
 
 ## Local build testing: native arch only
 
@@ -60,8 +58,7 @@ How the static link works (`example/Dockerfile`):
 ## Non-code artifacts
 
 Issues, PR descriptions, specs, plans, reviews, and every other non-code artifact give readers the
-context and judgment the diff cannot, not a narrated diff or filler, and are published in full on
-GitHub. The full rules:
+context and judgment the diff cannot show, and are published in full on GitHub. The full rules:
 
 @docs/non-code-rules.md
 
