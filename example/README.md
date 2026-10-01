@@ -4,7 +4,7 @@ This is a Go Lambda function for the `provided.al2023` runtime. It links `libduc
 
 ## Requirements
 
-- Docker. Go and the C/C++ toolchain run inside the build container, so you don't need Go on the host. For Podman, see [Using Podman](#using-podman).
+- Docker. Go and the C/C++ toolchain run inside the build container, so you don't need Go on the host.
 - [AWS SAM CLI](https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html).
 - `make`, plus `curl`, `jq` and `tar` with xz support for `make download-libs`.
 - A host with the same architecture as the function. The commands below build and run only for the host's own architecture. Building for the other one would run under emulation, which this README doesn't cover.
@@ -74,20 +74,3 @@ template.yaml   SAM template: DuckDBParquetFunction and the Architecture paramet
 libs/           created by make download-libs
 .aws-sam/       created by sam build; make clean removes .aws-sam/build
 ```
-
-## Using Podman
-
-The build and the local invoke also work with rootless Podman instead of Docker. This was tested on an x86_64 Fedora host with SELinux enforcing. Three things differ from Docker:
-
-- The Makefile runs `docker build`, so it needs a `docker` command that runs Podman, such as a symlink to `podman` on your `PATH` or Fedora's `podman-docker` package. A shell alias doesn't reach `make`.
-- SAM talks to the Docker API, so point it at Podman's API socket: run `systemctl --user start podman.socket`, then `export DOCKER_HOST=unix://$XDG_RUNTIME_DIR/podman/podman.sock`.
-- With SELinux enforcing, `sam local invoke` fails with `fork/exec /var/task/bootstrap: permission denied`, because the build directory is mounted into the runtime container without an SELinux label that allows it. One fix is to run a separate Podman API service with labeling turned off, and point SAM at that one instead:
-
-```bash
-printf '[containers]\nlabel = false\n' > "$XDG_RUNTIME_DIR/sam-nolabel.conf"
-CONTAINERS_CONF_OVERRIDE="$XDG_RUNTIME_DIR/sam-nolabel.conf" \
-  podman system service --time=0 "unix://$XDG_RUNTIME_DIR/sam-podman.sock" &
-export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/sam-podman.sock"
-```
-
-This turns off SELinux separation only for containers started through that socket. Your other Podman containers keep it.
