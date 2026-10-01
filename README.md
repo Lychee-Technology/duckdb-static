@@ -40,6 +40,8 @@ You don't need to build from source:
 2.  Download the latest `.tar.xz` file for your architecture.
 3.  Link the `libduckdb_bundle.a` inside it into your function at build time. [`example/`](example/) does this for a Go Lambda.
 
+The bundle is compiled for `x86-64-v3` on amd64 (Intel Haswell, AMD Zen, or newer) and for `armv8.2-a+crypto+fp16+dotprod+lse` on arm64 (AWS Graviton2 or newer). On older CPUs it crashes with an illegal-instruction error. Both AWS Lambda architectures meet these requirements.
+
 
 ## Contributing
 Pull requests are welcome.
