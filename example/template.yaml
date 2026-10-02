@@ -34,6 +34,3 @@ Resources:
       Runtime: provided.al2023
       Architectures:
         - !Ref Architecture
-      Environment:
-        Variables:
-          FLAVOR: parquet
