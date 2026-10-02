@@ -38,7 +38,7 @@ The invocation logs how long `LOAD 'parquet'` took and `dataDir: /var/task/data`
 
 What each step does:
 
-- `make download-libs` finds the latest release of this repository, downloads `libduckdb_bundle-<ARCH>-linux-httpfs-parquet.tar.xz`, and extracts it into `libs/parquet/`. It skips the download if `libs/parquet/url.txt` already names the same asset. Add `FORCE=1` to download again.
+- `make download-libs` finds the latest release of this repository, downloads `libduckdb_bundle-<ARCH>-linux-httpfs-parquet.tar.xz`, and extracts it into `libs/parquet/`. It skips the download if `libs/parquet/url.txt` already names the same asset. Add `FORCE=1` to download again. To use a bundle you already have, such as one from a branch run of this repository's build workflow, set `BUNDLE_TARBALL` to its `.tar.xz` path and `make download-libs` extracts it instead of downloading.
 - `sam build` runs the Makefile target `build-DuckDBParquetFunction`. With `BuildMethod: makefile`, SAM looks for a target named `build-<resource name>`, so renaming either one breaks the build. The target runs `docker build` and writes `bootstrap` and `data/sample.parquet` into `.aws-sam/build/DuckDBParquetFunction/`.
 - `sam local invoke` runs the built function in the `provided.al2023` runtime image.
 

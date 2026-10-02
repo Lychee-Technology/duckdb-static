@@ -9,7 +9,7 @@ This is a Go Lambda (AWS SAM, `provided.al2023`) that links a released `libduckd
 On an arm64 host (the default):
 
 ```bash
-make download-libs            # fetch latest release asset into libs/parquet/ (FORCE=1 to refetch)
+make download-libs            # fetch latest release asset into libs/parquet/ (FORCE=1 to refetch, BUNDLE_TARBALL=<file> to use a local bundle)
 sam build                     # runs Makefile target build-DuckDBParquetFunction → Docker build → .aws-sam/build/
 sam local invoke DuckDBParquetFunction
 ```
