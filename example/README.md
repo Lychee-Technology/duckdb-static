@@ -14,6 +14,7 @@ This is a Go Lambda function for the `provided.al2023` runtime. It links `libduc
 
 On an arm64 host (the default):
 
+<!-- .github/workflows/example.yml runs this block on arm64 -->
 ```bash
 cd example
 make download-libs
@@ -23,6 +24,7 @@ sam local invoke DuckDBParquetFunction
 
 On an x86_64 host:
 
+<!-- .github/workflows/example.yml runs this block on x86_64 -->
 ```bash
 cd example
 ARCH=amd64 make download-libs
@@ -32,6 +34,7 @@ sam local invoke DuckDBParquetFunction --parameter-overrides Architecture=x86_64
 
 The invocation logs how long `LOAD 'parquet'` took and `dataDir: /var/task/data`, then prints the result:
 
+<!-- .github/workflows/example.yml expects this output -->
 ```
 "avg(array_length(tokens)): 10.500000\n"
 ```
