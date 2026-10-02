@@ -2,14 +2,14 @@
 
 Guidance for `example/`. The repo-wide rules in `../AGENTS.md` still apply, including native-arch-only local builds and DCO sign-off.
 
-This is a Go Lambda (AWS SAM, `provided.al2023`) that links a released `libduckdb_bundle.a` and queries a parquet file shipped with the function. `README.md` is the user-facing version of this file. When the Makefile, Dockerfile, template, or query changes, update it too.
+This is a Go Lambda (AWS SAM, `provided.al2023`) that links a released `libduckdb_bundle.a` and queries a parquet file shipped with the function. `README.md` is the user-facing version of this file. When the Makefile, Dockerfile, template, or query changes, update it too. CI runs the README's commands, so a README that no longer matches the example fails CI (see [CI](#ci)).
 
 ## Build and run
 
 On an arm64 host (the default):
 
 ```bash
-make download-libs            # fetch latest release asset into libs/parquet/ (FORCE=1 to refetch)
+make download-libs            # fetch latest release asset into libs/parquet/ (FORCE=1 to refetch, BUNDLE_TARBALL=<file> to use a local bundle)
 sam build                     # runs Makefile target build-DuckDBParquetFunction → Docker build → .aws-sam/build/
 sam local invoke DuckDBParquetFunction
 ```
@@ -35,7 +35,18 @@ Overriding only `ARCH` puts an amd64 binary in an arm64 function. Overriding nei
 - The SAM resource name `DuckDBParquetFunction` must match the Makefile target `build-DuckDBParquetFunction`.
 - Extensions are compiled in, so the code uses `LOAD 'parquet'` with no `INSTALL`. Loading from disk is disabled in the bundle.
 - `GO_VERSION` is pinned both in `Makefile` and as the Dockerfile `ARG` default.
-- The `duckdb-go` versions in `go.mod` encode the DuckDB version: `duckdb-go/v2 v2.10506.0` and `duckdb-go-bindings v0.10506.0` correspond to DuckDB 1.5.6. `make download-libs` always fetches the latest release. When that release has a newer DuckDB, update `go.mod`/`go.sum` to the matching `duckdb-go` version.
+- The `duckdb-go` versions in `go.mod` encode the DuckDB version: `duckdb-go/v2 v2.10506.0` and `duckdb-go-bindings v0.10506.0` correspond to DuckDB 1.5.6. `make download-libs` fetches the latest release unless `BUNDLE_TARBALL` is set. When the bundle has a newer DuckDB, update `go.mod`/`go.sum` to the matching `duckdb-go` version.
+
+## CI
+
+`.github/workflows/example.yml` runs the README's command blocks on native runners: arm64 on `ubuntu-24.04-arm` and x86_64 on `ubuntu-latest`. It fails unless the output has a line equal to the README's expected output. It reads the commands and the expected line from `README.md`, from the code block right after each `<!-- .github/workflows/example.yml ... -->` comment, so editing a block changes what CI runs. Keep the comments and their text as they are. A missing comment, or an expected-output block that isn't exactly one line, fails the job.
+
+It tests one of two bundles:
+
+- On PRs and pushes to `main` that touch `example/`, and on manual dispatch, `make download-libs` fetches the latest release, as it does for users. If that release's DuckDB version (its tag without `_<n>`) differs from `duckdb_version`, the job skips the commands instead. It still passes, so a green check doesn't mean the example ran; a `Skipped:` notice on the run says it didn't. That happens between pushing a DuckDB bump and releasing it, when the latest release would pair the new `go.mod` with the old bundle.
+- `build-and-release.yml` calls it after the build, for tag pushes and branch dispatches. It sets `BUNDLE_TARBALL` to the run's artifact, so the README's `make download-libs` extracts the bundle just built. The release job doesn't wait for this check, so a DuckDB release can ship before a matching `duckdb-go` exists. If the old `go.mod` doesn't work with the new bundle, this check fails, and so do later PR checks until `go.mod` is bumped.
+
+The job pulls three images with no retries. From ECR Public it pulls `amazonlinux:2023` for the build and `lambda/provided:al2023`, which `sam local invoke` builds its runtime image on. From Docker Hub it pulls `duckdb/duckdb` anonymously, in the Dockerfile's `data` stage. A registry timeout fails the job: `Get "https://public.ecr.aws/v2/": context deadline exceeded` happened once during `sam local invoke`. If a job failed while pulling, re-run it before suspecting the change. In a build-workflow run, re-run it within a day: the job downloads that run's bundles, and the artifacts expire after one day, so a later re-run fails at the download. After that, dispatch the build again for a branch. For a tag that is still the latest release, dispatch this workflow on the tag (`gh workflow run example.yml --ref <tag>`), which tests the published assets, the same files the artifacts held. Don't re-run the whole tag run, because its release job would overwrite the release's assets with a rebuild. No Docker Hub rate-limit errors have shown up so far. If they do, the job needs Docker Hub credentials.
 
 ## Podman
 

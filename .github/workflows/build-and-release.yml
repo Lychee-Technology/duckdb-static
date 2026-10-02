@@ -111,6 +111,15 @@ jobs:
           path: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
           retention-days: 1
 
+  # Builds and invokes example/ against the bundles above. The release doesn't
+  # wait for it, because a DuckDB release can ship before a duckdb-go version
+  # that matches it exists.
+  example:
+    needs: build
+    uses: ./.github/workflows/example.yml
+    with:
+      bundle-artifact: true
+
   release:
     needs: build
     runs-on: ubuntu-latest

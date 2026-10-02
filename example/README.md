@@ -14,6 +14,7 @@ This is a Go Lambda function for the `provided.al2023` runtime. It links `libduc
 
 On an arm64 host (the default):
 
+<!-- .github/workflows/example.yml runs this block on arm64 -->
 ```bash
 cd example
 make download-libs
@@ -23,6 +24,7 @@ sam local invoke DuckDBParquetFunction
 
 On an x86_64 host:
 
+<!-- .github/workflows/example.yml runs this block on x86_64 -->
 ```bash
 cd example
 ARCH=amd64 make download-libs
@@ -32,13 +34,14 @@ sam local invoke DuckDBParquetFunction --parameter-overrides Architecture=x86_64
 
 The invocation logs how long `LOAD 'parquet'` took and `dataDir: /var/task/data`, then prints the result:
 
+<!-- .github/workflows/example.yml expects this output -->
 ```
 "avg(array_length(tokens)): 10.500000\n"
 ```
 
 What each step does:
 
-- `make download-libs` finds the latest release of this repository, downloads `libduckdb_bundle-<ARCH>-linux-httpfs-parquet.tar.xz`, and extracts it into `libs/parquet/`. It skips the download if `libs/parquet/url.txt` already names the same asset. Add `FORCE=1` to download again.
+- `make download-libs` finds the latest release of this repository, downloads `libduckdb_bundle-<ARCH>-linux-httpfs-parquet.tar.xz`, and extracts it into `libs/parquet/`. It skips the download if `libs/parquet/url.txt` already names the same asset. Add `FORCE=1` to download again. To use a bundle you already have, such as one from a branch run of this repository's build workflow, set `BUNDLE_TARBALL` to its `.tar.xz` path and `make download-libs` extracts it instead of downloading.
 - `sam build` runs the Makefile target `build-DuckDBParquetFunction`. With `BuildMethod: makefile`, SAM looks for a target named `build-<resource name>`, so renaming either one breaks the build. The target runs `docker build` and writes `bootstrap` and `data/sample.parquet` into `.aws-sam/build/DuckDBParquetFunction/`.
 - `sam local invoke` runs the built function in the `provided.al2023` runtime image.
 
@@ -62,7 +65,7 @@ To query your own file, change the `COPY` statement in the `data` stage, or add 
 - The build image is Amazon Linux 2023 with gcc14. The bundle is built with the same compiler, and `provided.al2023` runs on the same distribution.
 - The build sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`. DuckDB is linked statically. libstdc++, libcurl and OpenSSL are still linked dynamically from the system.
 - `go build -tags=duckdb_use_static_lib` makes `duckdb-go` link the local `libduckdb_bundle.a` instead of the prebuilt libraries from `duckdb-go-bindings`.
-- The `duckdb-go` version in `go.mod` encodes the DuckDB version: `v2.10506.0` goes with DuckDB 1.5.6. `make download-libs` always fetches the latest release. If that release has a newer DuckDB than `go.mod`, update `github.com/duckdb/duckdb-go/v2` to the matching version.
+- The `duckdb-go` version in `go.mod` encodes the DuckDB version: `v2.10506.0` goes with DuckDB 1.5.6. `make download-libs` fetches the latest release unless you set `BUNDLE_TARBALL`. If the bundle has a newer DuckDB than `go.mod`, update `github.com/duckdb/duckdb-go/v2` to the matching version.
 
 ## Files
 
