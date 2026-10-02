@@ -71,11 +71,23 @@ WORKDIR /out
 RUN zip -9 bootstrap.zip bootstrap
 
 # --------------------------------------------------------
-# Stage 2: Exporter
+# Stage 2: Sample data
+# Generates the parquet file that cmd/main.go queries: 1000 rows, each with a
+# `tokens` list of 1 to 20 strings. The image has no shell, so RUN uses the
+# exec form. Any DuckDB version can write this file; the tag doesn't have to
+# match the bundle's DuckDB version.
+# --------------------------------------------------------
+FROM docker.io/duckdb/duckdb:1.5.6 AS data
+
+WORKDIR /data
+RUN ["/duckdb", "-c", "COPY (SELECT i AS id, [concat('w', (i * 7 + j) % 100) FOR j IN range(1 + i % 20)] AS tokens FROM range(1000) t(i)) TO 'sample.parquet' (FORMAT parquet)"]
+
+# --------------------------------------------------------
+# Stage 3: Exporter
 # This stage is used solely to export the artifacts back to the host machine.
 # --------------------------------------------------------
 FROM scratch AS exporter
 
 COPY --from=builder /out/bootstrap /
 COPY --from=builder /out/bootstrap.zip /
-COPY --from=builder /src/data /data/
+COPY --from=data /data /data/
