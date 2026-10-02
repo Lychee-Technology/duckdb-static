@@ -65,7 +65,7 @@ To query your own file, change the `COPY` statement in the `data` stage, or add 
 - The build image is Amazon Linux 2023 with gcc14. The bundle is built with the same compiler, and `provided.al2023` runs on the same distribution.
 - The build sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`. DuckDB is linked statically. libstdc++, libcurl and OpenSSL are still linked dynamically from the system.
 - `go build -tags=duckdb_use_static_lib` makes `duckdb-go` link the local `libduckdb_bundle.a` instead of the prebuilt libraries from `duckdb-go-bindings`.
-- The `duckdb-go` version in `go.mod` encodes the DuckDB version: `v2.10506.0` goes with DuckDB 1.5.6. `make download-libs` always fetches the latest release. If that release has a newer DuckDB than `go.mod`, update `github.com/duckdb/duckdb-go/v2` to the matching version.
+- The `duckdb-go` version in `go.mod` encodes the DuckDB version: `v2.10506.0` goes with DuckDB 1.5.6. `make download-libs` fetches the latest release unless you set `BUNDLE_TARBALL`. If the bundle has a newer DuckDB than `go.mod`, update `github.com/duckdb/duckdb-go/v2` to the matching version.
 
 ## Files
 

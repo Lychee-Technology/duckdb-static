@@ -15,7 +15,7 @@ There are no linters. The repo has four parts:
 
 - If you push a tag matching `v*`, CI builds both arches and creates a GitHub Release. Alongside the release, it runs the example against the bundles it just built; the release doesn't wait for that check. A `workflow_dispatch` run on a branch only builds, uploads artifacts (1-day retention), and runs the example against them, so dispatch on a branch to test a build. A dispatch on a tag also releases, because the release job checks only `github.ref_type == 'tag'`: it creates that tag's release, or updates an existing one and overwrites its assets.
 - Tags follow `v<duckdb-version>_<n>`, for example `v1.5.5_0` and `v1.5.4_1`. `<n>` is a rebuild counter for the same DuckDB version.
-- To bump DuckDB, edit both values in `duckdb_version`. Also update `example/go.mod`/`go.sum` if a matching `duckdb-go` release exists. `example/AGENTS.md` explains how `duckdb-go` versions map to DuckDB versions. Until the new version is released, the example check on PRs and `main` skips itself; dispatch the build on the branch to test the example against the new bundle.
+- To bump DuckDB, edit both values in `duckdb_version`. Also update `example/go.mod`/`go.sum` if a matching `duckdb-go` release exists. `example/AGENTS.md` explains how `duckdb-go` versions map to DuckDB versions. Until the new version is released, the example check on PRs and `main` skips its commands but still passes, so its green check tested nothing; dispatch the build on the branch to test the example against the new bundle.
 - Commits in this repo carry DCO sign-off (`git commit -s`).
 
 ## Build details that are easy to break
