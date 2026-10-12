@@ -1,0 +1,117 @@
+# Runs example/README.md's build-and-invoke commands on native arm64 and x86_64
+# runners and fails unless the output contains the README's expected line. The
+# commands and the expected line are read from the README, from the code block
+# below each "<!-- .github/workflows/example.yml ... -->" comment, so CI runs
+# exactly what the README says.
+name: Example
+
+on:
+  pull_request:
+    paths:
+      - 'example/**'
+      - '.github/workflows/example.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'example/**'
+      - '.github/workflows/example.yml'
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      bundle-artifact:
+        description: Test the bundles uploaded by the calling run's build job instead of the latest release.
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  readme:
+    name: README (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            host: arm64
+            arch: arm64
+          - runner: ubuntu-latest
+            host: x86_64
+            arch: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      SAM_CLI_TELEMETRY: '0'
+      AWS_DEFAULT_REGION: us-east-1
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Tools
+        run: |
+          uname -m
+          docker version --format '{{.Server.Version}} {{.Server.Arch}}'
+          sam --version
+
+      # make download-libs fetches the latest release. Between pushing a DuckDB
+      # bump and releasing it, that release has an older DuckDB than this
+      # commit's go.mod expects, so the result wouldn't say anything about this
+      # commit. The build workflow tests the example against its own bundle.
+      - name: Check the latest release against duckdb_version
+        id: release
+        if: ${{ !inputs.bundle-artifact }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source ./duckdb_version
+          latest=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/Lychee-Technology/duckdb-static/releases/latest | jq -er .tag_name)
+          echo "Latest release: $latest, duckdb_version: $DUCKDB_VER"
+          if [ "${latest%_*}" != "$DUCKDB_VER" ]; then
+            echo "::notice::Skipped: the latest release, $latest, doesn't contain DuckDB $DUCKDB_VER from duckdb_version. Run the build workflow on this branch to test the example against a bundle built from it."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the bundle built in this run
+        if: ${{ inputs.bundle-artifact }}
+        uses: actions/download-artifact@v7
+        with:
+          name: libduckdb-${{ matrix.arch }}-httpfs-parquet
+          path: ${{ runner.temp }}/bundle
+
+      - name: Run the README commands
+        if: steps.release.outputs.skip != 'true'
+        shell: bash
+        env:
+          HOST: ${{ matrix.host }}
+          # Read by make download-libs; empty means download the latest release.
+          BUNDLE_TARBALL: ${{ inputs.bundle-artifact && format('{0}/bundle/libduckdb_bundle-{1}-linux-httpfs-parquet.tar.xz', runner.temp, matrix.arch) || '' }}
+        run: |
+          # Prints the body of the first fenced code block after the line
+          # "<!-- $1 -->" in example/README.md.
+          readme_block() {
+            awk -v marker="<!-- $1 -->" '
+              $0 == marker { found = 1; next }
+              found && /^```/ { if (inside) exit; inside = 1; next }
+              inside
+            ' example/README.md
+          }
+          commands=$(readme_block ".github/workflows/example.yml runs this block on $HOST")
+          expected=$(readme_block ".github/workflows/example.yml expects this output")
+          if [ -z "$commands" ] || [ -z "$expected" ] || [ "$(wc -l <<<"$expected")" -ne 1 ]; then
+            echo "::error file=example/README.md::Found no $HOST commands block or no one-line expected-output block. Each must follow its <!-- .github/workflows/example.yml ... --> comment."
+            exit 1
+          fi
+
+          bash -euxo pipefail -c "$commands" | tee "$RUNNER_TEMP/stdout.txt"
+          # sam local invoke prints the result without a trailing newline, and
+          # workflow commands such as ::error only work at the start of a line.
+          echo
+
+          if ! grep -Fxq -- "$expected" "$RUNNER_TEMP/stdout.txt"; then
+            echo "::error file=example/README.md::The output has no line matching the README's expected output: $expected"
+            exit 1
+          fi
+          echo "Output matches the README: $expected"

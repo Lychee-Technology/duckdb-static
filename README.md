@@ -33,6 +33,7 @@ A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** Pushing a `v*` tag starts the workflow.
 2.  **Build:** Compiles DuckDB and its extensions into a static library on Amazon Linux 2023, once for arm64 and once for amd64.
 3.  **Release:** Packages each build as a `.tar.xz` file and publishes it to GitHub Releases.
+4.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`.
 
 ### Installation / Usage
 You don't need to build from source:
