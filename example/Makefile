@@ -41,14 +41,24 @@ build-DuckDBParquetFunction:
 
 # download-libs
 # Downloads the matching release asset from the duckdb-static GitHub releases.
+# BUNDLE_TARBALL=<path to a bundle .tar.xz> extracts that file instead, such as
+# a bundle from a branch run of the build workflow. CI uses it to test the
+# example against the bundle it just built.
 FLAVOR ?= parquet
 ASSET_FLAVOR := httpfs-parquet
 LIBS_DIR := libs/$(FLAVOR)
+BUNDLE_TARBALL ?=
 
 download-libs:
 	@echo "Preparing $(LIBS_DIR) for ARCH=$(ARCH) FLAVOR=$(FLAVOR)"
 	@mkdir -p $(LIBS_DIR)
 	@if [ -n "$(FORCE)" ] && [ "$(FORCE)" = "1" ]; then rm -rf $(LIBS_DIR)/* || true; fi
+ifneq ($(BUNDLE_TARBALL),)
+	@echo "Extracting $(BUNDLE_TARBALL)"
+	@tar -xJf "$(BUNDLE_TARBALL)" -C $(LIBS_DIR)
+	@echo "$(abspath $(BUNDLE_TARBALL))" > $(LIBS_DIR)/url.txt
+	@echo "Done."
+else
 	@echo "Querying latest release for Lychee-Technology/duckdb-static..."
 	@PATTERN="libduckdb_bundle-$(ARCH)-linux-$(ASSET_FLAVOR)\\.tar"; \
 	url=$$(curl -s https://api.github.com/repos/Lychee-Technology/duckdb-static/releases/latest | \
@@ -64,6 +74,7 @@ download-libs:
 		echo "$$url" > "$$url_file" || (echo "Download or extraction failed"; exit 1); \
 	fi; \
 	echo "Done."
+endif
 
 clean:
 	rm -rf $(ARTIFACTS_DIR)
