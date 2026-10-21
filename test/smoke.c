@@ -23,6 +23,10 @@
 int32_t duckdb_register_static_extensions(void);
 #endif
 
+// DuckDB's error for INSTALL, and for LOAD of an extension that isn't registered,
+// in a build without loadable-extension support.
+#define NO_LOADABLE "this build does not link the loadable_extensions library"
+
 static duckdb_connection con;
 static int failures;
 
@@ -110,7 +114,8 @@ int main(int argc, char **argv) {
 	(void)endpoint;
 	expect("0", "SELECT count(*) FROM duckdb_extensions() WHERE loaded");
 	expect_error("core_functions", "SELECT to_minutes(5)");
-	expect_error("parquet", "LOAD parquet");
+	// Nothing registered parquet, and the bundle can't load it from anywhere else.
+	expect_error(NO_LOADABLE, "LOAD parquet");
 	expect_error("parquet", "COPY (SELECT 1 AS i) TO '%s/unlinked.parquet' (FORMAT parquet)", dir);
 	expect_error("json", "SELECT json_extract_string('{\"a\": 1}', '$.a')");
 #else
@@ -148,8 +153,8 @@ int main(int argc, char **argv) {
 
 	// An extension that isn't in the bundle can't be installed or loaded: the
 	// bundle is built without the loadable-extension support that downloads them.
-	expect_error("tpch", "INSTALL tpch");
-	expect_error("tpch", "LOAD tpch");
+	expect_error(NO_LOADABLE, "INSTALL tpch");
+	expect_error(NO_LOADABLE, "LOAD tpch");
 #endif
 
 	duckdb_disconnect(&con);

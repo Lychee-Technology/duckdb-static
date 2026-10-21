@@ -57,9 +57,11 @@ EOF
 	-I"$work" -I"$duckdb_dir/extension/loader" -I"$duckdb_dir/src/include" \
 	-c "$work/duckdb_bundle_loader.cpp" -o "$work/in/duckdb_bundle_loader.o"
 
-# ar's MRI ADDLIB copies every member, including members that share a name.
-# Extracting the archives to a directory and re-archiving it would keep only
-# one of each name.
+# ar's MRI ADDLIB copies every member of each archive. Members can share a
+# name across archives (platform.cpp.o is in libduckdb_static.a and in
+# libparquet_extension.a), and re-archiving extracted objects keeps both only
+# if they all reach ar in one call, because a later "ar r" replaces a member
+# of the same name.
 cd "$work"
 expected_members=1
 {
@@ -74,7 +76,8 @@ expected_members=1
 	echo "END"
 } >bundle.mri
 ar -M <bundle.mri
-objcopy --strip-debug libduckdb_bundle.a
+# -D writes zero timestamps, UIDs and GIDs, which ar -M doesn't.
+objcopy -D --strip-debug libduckdb_bundle.a
 
 members=$(ar t libduckdb_bundle.a | wc -l)
 if [ "$members" -ne "$expected_members" ]; then
