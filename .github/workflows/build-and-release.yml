@@ -17,14 +17,14 @@ jobs:
           - arch: arm64
             runner: 'ubuntu-24.04-arm'
             platform: arm64-linux
-            build_extensions: 'httpfs;parquet;icu;json;'
+            build_extensions: 'core_functions;parquet;json;icu;httpfs'
             flavor: 'httpfs-parquet'
             DUCKDB_PLATFORM: linux_arm64
             CXXFLAGS: "-march=armv8.2-a+crypto+fp16+dotprod+lse -D_GLIBCXX_USE_CXX11_ABI=1"
           - arch: amd64
             runner: 'ubuntu-latest'
             platform: amd64-linux
-            build_extensions: 'httpfs;parquet;icu;json;'
+            build_extensions: 'core_functions;parquet;json;icu;httpfs'
             flavor: 'httpfs-parquet'
             DUCKDB_PLATFORM: linux_amd64
             CXXFLAGS: "-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1"
@@ -65,15 +65,21 @@ jobs:
         run: |
           source ./duckdb_version
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
-          echo "DUCKDB_EXTENSION_CI_TOOLS_BRANCH=$DUCKDB_EXTENSION_CI_TOOLS_BRANCH" >> $GITHUB_ENV
 
       - name: Clone DuckDB
         run: git clone --depth 1 --branch $DUCKDB_VER https://github.com/duckdb/duckdb.git
 
-      - name: Build DuckDB bundle
+      # DuckDB 2.0 builds the engine and each extension as separate archives;
+      # the Package step below merges them into libduckdb_bundle.a.
+      #
+      # DUCKDB_VERSION: 2.0 no longer reads the version from the git tag. Without
+      # it, a shallow clone of v2.0.0 reports v2.0.0-dev1.
+      # DUCKDB_NEW_EXTENSION_BUILD=0: 2.0's new extension build path refuses
+      # httpfs without vcpkg. The legacy path fetches httpfs at the same pinned
+      # commit and links it against the system libcurl and OpenSSL, as 1.5.x did.
+      - name: Build DuckDB
         run: |
           pushd duckdb
-          mkdir -p build/release/vcpkg_installed/${{ matrix.platform }}/lib
 
           export CC=/usr/bin/gcc14-gcc
           export CXX=/usr/bin/gcc14-g++
@@ -85,24 +91,32 @@ jobs:
           echo "Compiler version:"
           $CXX --version | head -1
 
+          DUCKDB_VERSION=$DUCKDB_VER \
+          DUCKDB_NEW_EXTENSION_BUILD=0 \
           GEN=ninja \
           DUCKDB_PLATFORM=${{ matrix.DUCKDB_PLATFORM }} \
           BUILD_SHELL=0 \
           DISABLE_EXTENSION_LOAD=1 \
           EXTENSION_STATIC_BUILD=1 \
           BUILD_EXTENSIONS="${{ matrix.build_extensions }}" \
+          STATICALLY_LINK_EXTENSIONS="${{ matrix.build_extensions }}" \
           EXTRA_CMAKE_VARIABLES="-DCMAKE_CXX_FLAGS_RELEASE=-Os -DCMAKE_C_FLAGS_RELEASE=-Os" \
-          make bundle-library
-          objcopy --strip-debug build/release/libduckdb_bundle.a
+          make release
           popd
 
       - name: Package bundle
+        env:
+          CXX: /usr/bin/gcc14-g++
+          CXXFLAGS: ${{ matrix.CXXFLAGS }} -ffunction-sections -fdata-sections
         run: |
-          mkdir -p /tmp/pkg
-          cp duckdb/build/release/libduckdb_bundle.a /tmp/pkg/
-          echo "Package contents:"
-          ls -lh /tmp/pkg/
-          tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C /tmp/pkg .
+          scripts/package-bundle.sh duckdb "${{ matrix.build_extensions }}" \
+            libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+
+      - name: Smoke-test bundle
+        env:
+          CC: /usr/bin/gcc14-gcc
+        run: |
+          test/smoke.sh libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz "$DUCKDB_VER"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -157,6 +171,8 @@ jobs:
             - DuckDB: `${{ env.DUCKDB_VER }}`
 
             **Variants:**
-            - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with httpfs, parquet, icu, json
+            - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with core_functions, parquet, json, icu, httpfs
+
+            Since DuckDB 2.0 the extensions must be registered before the first database opens: call `duckdb_register_static_extensions()`, or link with `-Wl,-u,duckdb_register_static_extensions`. See the README.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

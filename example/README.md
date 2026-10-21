@@ -63,9 +63,10 @@ To query your own file, change the `COPY` statement in the `data` stage, or add 
 ## How the static link works
 
 - The build image is Amazon Linux 2023 with gcc14. The bundle is built with the same compiler, and `provided.al2023` runs on the same distribution.
-- The build sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`. DuckDB is linked statically. libstdc++, libcurl and OpenSSL are still linked dynamically from the system.
+- The build sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -Wl,-u,duckdb_register_static_extensions -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`. DuckDB is linked statically. libstdc++, libcurl and OpenSSL are still linked dynamically from the system.
+- Since DuckDB 2.0, statically linked extensions have to be registered before a database opens. `-Wl,-u,duckdb_register_static_extensions` links the bundle's extension loader, which registers them before `main`, so `cmd/main.go` needs no registration code. Without the flag, `LOAD 'parquet'` fails. The [top-level README](../README.md#linking-and-registering-the-extensions) describes the other way, calling `duckdb_register_static_extensions()`.
 - `go build -tags=duckdb_use_static_lib` makes `duckdb-go` link the local `libduckdb_bundle.a` instead of the prebuilt libraries from `duckdb-go-bindings`.
-- The `duckdb-go` version in `go.mod` encodes the DuckDB version: `v2.10506.0` goes with DuckDB 1.5.6. `make download-libs` fetches the latest release unless you set `BUNDLE_TARBALL`. If the bundle has a newer DuckDB than `go.mod`, update `github.com/duckdb/duckdb-go/v2` to the matching version.
+- The `duckdb-go` version in `go.mod` encodes the DuckDB version it was released for: `v2.10506.0` goes with DuckDB 1.5.6. No stable `duckdb-go` release for DuckDB 2.0.0 exists yet, only `v2.20000.0-N.preview` builds against a pre-release DuckDB. So the example keeps `v2.10506.0` with the 2.0.0 bundle. That works because the bindings call only DuckDB's C API, and 2.0.0's `duckdb.h` declares every function of 1.5.6's with the same signature. It only adds two functions and three enum values, which these bindings don't know: the `TIMESTAMP_TZ_NS` type and two error types. Move to the matching `duckdb-go` release once it is out.
 
 ## Files
 

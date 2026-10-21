@@ -29,13 +29,15 @@ Overriding only `ARCH` puts an amd64 binary in an arm64 function. Overriding nei
 ## How the build works
 
 - The build image is AL2023 with gcc14, matching both CI and the Lambda runtime.
-- It sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`.
+- It sets `CGO_ENABLED=1`, `CPPFLAGS=-DDUCKDB_STATIC_BUILD`, and `CGO_LDFLAGS="-L/src/libs/parquet -Wl,-u,duckdb_register_static_extensions -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"`.
+- `-Wl,-u,duckdb_register_static_extensions` is what makes the extensions work. DuckDB 2.0 loads a statically linked extension only after the program registers it. The flag pulls the bundle's loader object into the binary, and that object registers the extensions before `main`. Dropping the flag still links, but `LOAD 'parquet'` fails at runtime. Once `duckdb-go` supports DuckDB 2.0, its bindings call `duckdb_register_static_extensions()` themselves (duckdb-go-bindings#116), and the flag becomes redundant but harmless.
 - `go build -tags=duckdb_use_static_lib` makes `duckdb-go` link the local `.a` instead of its bundled prebuilt libs.
 - The `data` stage generates `data/sample.parquet` with the `duckdb/duckdb` CLI image, and the `exporter` stage puts it next to `bootstrap`. `cmd/main.go` reads it from the working directory (`/var/task` on Lambda), so a clean checkout needs no local data. The image tag doesn't have to match the bundle's DuckDB version. The stage's SQL produces an average of exactly 10.5 tokens per row, which `README.md` gives as the expected output.
 - The SAM resource name `DuckDBParquetFunction` must match the Makefile target `build-DuckDBParquetFunction`.
-- Extensions are compiled in, so the code uses `LOAD 'parquet'` with no `INSTALL`. Loading from disk is disabled in the bundle.
+- Extensions are compiled in, so the code uses `LOAD 'parquet'` with no `INSTALL`. For a registered extension, `LOAD` does nothing. Loading from disk is disabled in the bundle.
 - `GO_VERSION` is pinned both in `Makefile` and as the Dockerfile `ARG` default.
 - The `duckdb-go` versions in `go.mod` encode the DuckDB version: `duckdb-go/v2 v2.10506.0` and `duckdb-go-bindings v0.10506.0` correspond to DuckDB 1.5.6. `make download-libs` fetches the latest release unless `BUNDLE_TARBALL` is set. When the bundle has a newer DuckDB, update `go.mod`/`go.sum` to the matching `duckdb-go` version.
+- The bundle has DuckDB 2.0.0, but `go.mod` stays on the 1.5.6 versions because no stable `duckdb-go` for 2.0.0 exists yet. Only `v2.20000.0-N.preview` tags exist, which pin bindings built against a pre-release DuckDB. The pairing works because the bindings use only the C API in `duckdb.h`, and 2.0.0's header declares every 1.5.6 function with an unchanged signature. The only additions are `duckdb_create_timestamp_tz_ns`, `duckdb_get_timestamp_tz_ns`, the `DUCKDB_TYPE_TIMESTAMP_TZ_NS` type and the `DUCKDB_ERROR_DATA_CORRUPTION` and `DUCKDB_ERROR_RESOURCE_IN_USE` error types. Re-check this with a header diff before pairing other versions, and bump `go.mod` once `duckdb-go` releases `v2.20000.x`.
 
 ## CI
 
