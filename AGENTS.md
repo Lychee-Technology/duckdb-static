@@ -10,6 +10,8 @@ There are no linters. The repo has these parts:
 - `.github/workflows/build-and-release.yml`: the whole build.
 - `scripts/package-bundle.sh`: called by the build. It merges DuckDB's engine and extension archives into `libduckdb_bundle.a` and writes the release tarball.
 - `test/smoke.sh` and `test/smoke.c`: called by the build after packaging. They link a C program against the tarball and check a query result for each extension, over HTTP and S3 for httpfs against a local server. They also check that the extensions are missing without registration.
+- `test/fixtures/`: Parquet fixtures for testing httpfs against a public HTTPS site, with `fixtures.py` to generate, check and verify them. A committed fixture version never changes; new data goes into a new version. `test/fixtures/README.md` has the contract and the hosting steps.
+- `.github/workflows/fixtures.yml`: regenerates the fixtures on native arm64 and x86_64 runners, fails unless the bytes match the committed ones, and tests `fixtures.py verify`.
 - `.github/workflows/example.yml`: runs `example/README.md`'s build-and-invoke commands on native arm64 and x86_64 runners and fails unless the output matches the README. `example/AGENTS.md` explains when it runs and which bundle it tests.
 - `example/`: a Go Lambda (AWS SAM) that consumes a released bundle. Its guidance is in `example/AGENTS.md`.
 
