@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Tests fixtures.py verify against a local server that serves test/fixtures/public
-correctly, or with one of the faults verify must report.
+correctly, or with one of the faults verify must report, and tests that generate
+and check guard the committed versions. The check test downloads the pinned
+DuckDB CLI unless DUCKDB_CLI is set.
 
 Usage: python3 test/fixtures/test_fixtures.py
 """
@@ -8,8 +10,10 @@ import gzip
 import http.server
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import unittest
 
@@ -50,6 +54,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def send(self, status, headers, body, send_body):
         self.send_response(status)
         headers = {"Content-Length": str(len(body)), **headers}
+        if self.fault == "no_content_length" and not send_body:
+            # Like Cloudflare Pages: HEAD without a Content-Length.
+            del headers["Content-Length"]
         for name, value in headers.items():
             self.send_header(name, value)
         self.end_headers()
@@ -66,11 +73,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
-def verify(*args):
+def run(script, *args):
     env = {k: v for k, v in os.environ.items() if k != "DUCKDB_TEST_HTTPFS_BASE_URL"}
-    result = subprocess.run([sys.executable, FIXTURES, "verify", *args],
+    result = subprocess.run([sys.executable, script, *args],
                             env=env, capture_output=True, text=True)
     return result.returncode, result.stdout + result.stderr
+
+
+def verify(*args):
+    return run(FIXTURES, "verify", *args)
 
 
 class VerifyTest(unittest.TestCase):
@@ -106,6 +117,9 @@ class VerifyTest(unittest.TestCase):
     def test_stale_bytes_fail(self):
         self.assert_fails("stale", "differ from bytes")
 
+    def test_missing_content_length_fails(self):
+        self.assert_fails("no_content_length", "FAIL HEAD basic.parquet: Content-Length None, expected")
+
     def test_truncated_body_fails(self):
         code, output = verify(self.serve("truncated"))
         self.assertEqual(code, 1, output)
@@ -131,6 +145,32 @@ class VerifyTest(unittest.TestCase):
         code, output = verify()
         self.assertEqual(code, 2, output)
         self.assertIn("Not configured", output)
+
+
+class GenerateCheckTest(unittest.TestCase):
+    def test_generate_refuses_existing_version(self):
+        code, output = run(FIXTURES, "generate", "v1")
+        self.assertEqual(code, 1, output)
+        self.assertIn("Published fixtures don't change", output)
+
+    def test_check_reports_changed_bytes(self):
+        # check on a copy of the tree with one byte of basic.parquet changed.
+        with tempfile.TemporaryDirectory() as work:
+            for name in ("fixtures.py", "v1.sql", "v1.queries.sql"):
+                shutil.copy(os.path.join(HERE, name), work)
+            shutil.copytree(PUBLIC, os.path.join(work, "public"))
+            path = os.path.join(work, "public", "v1", "basic.parquet")
+            with open(path, "rb") as f:
+                data = bytearray(f.read())
+            offset = len(data) // 2
+            data[offset] ^= 0xFF
+            with open(path, "wb") as f:
+                f.write(data)
+            code, output = run(os.path.join(work, "fixtures.py"), "check", "v1")
+        self.assertEqual(code, 1, output)
+        self.assertIn(f"basic.parquet: {len(data)} bytes committed, {len(data)} regenerated, "
+                      f"first difference at byte {offset}", output)
+        self.assertIn("regenerated files don't match", output)
 
 
 if __name__ == "__main__":
