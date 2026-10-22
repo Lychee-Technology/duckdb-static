@@ -299,8 +299,12 @@ def verify(base, version):
         print("Not configured: pass a base URL or set DUCKDB_TEST_HTTPFS_BASE_URL. "
               "Nothing was verified.")
         return 2
-    parsed = urllib.parse.urlsplit(base)
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+    try:
+        parsed = urllib.parse.urlsplit(base)
+        parsed.port  # raises on a port that isn't a number from 0 to 65535
+    except ValueError:  # also an unclosed IPv6 bracket
+        parsed = None
+    if not parsed or parsed.scheme not in ("http", "https") or not parsed.netloc:
         # A mistyped base URL is a failure, not "not configured": exit 2 would
         # let a CI job read it as a skip.
         print(f"FAIL {base!r} isn't an http:// or https:// URL. Nothing was verified.")

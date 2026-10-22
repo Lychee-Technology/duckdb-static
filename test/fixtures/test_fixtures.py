@@ -133,6 +133,14 @@ class VerifyTest(unittest.TestCase):
         self.assertIn("isn't an http:// or https:// URL", output)
         self.assertNotIn("Traceback", output)
 
+    def test_malformed_url_fails(self):
+        # urlsplit raises on the bracket and .port on the ports.
+        for url in ("https://[::1", "http://127.0.0.1:abc", "http://127.0.0.1:99999"):
+            code, output = verify(url)
+            self.assertEqual(code, 1, output)
+            self.assertIn("isn't an http:// or https:// URL", output)
+            self.assertNotIn("Traceback", output)
+
     def test_unreachable_endpoint_fails(self):
         url = self.serve("good")
         # A port nothing listens on any more.
