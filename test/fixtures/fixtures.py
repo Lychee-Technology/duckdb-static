@@ -161,31 +161,33 @@ def check_queries(cli, queries, directory):
         raise Failure(f"{failures} of {len(queries)} queries didn't give the expected result")
 
 
-def build(version, out):
-    """Writes the files and manifest of version into the empty directory out."""
+def duckdb_version_of(version):
     if version not in VERSIONS:
         raise Failure(f"unknown fixture version {version}; known: {', '.join(VERSIONS)}")
-    duckdb_version = VERSIONS[version]
-    queries = parse_queries(os.path.join(HERE, f"{version}.queries.sql"))
-    with tempfile.TemporaryDirectory() as work:
-        cli = cli_path(duckdb_version, work)
-        with open(os.path.join(HERE, f"{version}.sql"), encoding="utf-8") as f:
-            run_cli(cli, f.read(), out)
-        check_queries(cli, queries, out)
+    return VERSIONS[version]
 
-        files = []
-        for name in sorted(os.listdir(out)):
-            data = read(os.path.join(out, name))
-            meta = run_json(cli, f"SELECT num_rows, num_row_groups FROM parquet_file_metadata('{name}')", out)[0]
-            schema = run_json(cli, f"DESCRIBE SELECT * FROM read_parquet('{name}')", out)
-            files.append({
-                "path": name,
-                "size": len(data),
-                "sha256": sha256(data),
-                "rows": meta["num_rows"],
-                "row_groups": meta["num_row_groups"],
-                "schema": [{"name": c["column_name"], "type": c["column_type"]} for c in schema],
-            })
+
+def build(version, cli, out):
+    """Writes the files and manifest of version into the empty directory out."""
+    duckdb_version = duckdb_version_of(version)
+    queries = parse_queries(os.path.join(HERE, f"{version}.queries.sql"))
+    with open(os.path.join(HERE, f"{version}.sql"), encoding="utf-8") as f:
+        run_cli(cli, f.read(), out)
+    check_queries(cli, queries, out)
+
+    files = []
+    for name in sorted(os.listdir(out)):
+        data = read(os.path.join(out, name))
+        meta = run_json(cli, f"SELECT num_rows, num_row_groups FROM parquet_file_metadata('{name}')", out)[0]
+        schema = run_json(cli, f"DESCRIBE SELECT * FROM read_parquet('{name}')", out)
+        files.append({
+            "path": name,
+            "size": len(data),
+            "sha256": sha256(data),
+            "rows": meta["num_rows"],
+            "row_groups": meta["num_row_groups"],
+            "schema": [{"name": c["column_name"], "type": c["column_type"]} for c in schema],
+        })
     manifest = {
         "version": version,
         "generator": f"test/fixtures/fixtures.py with the DuckDB {duckdb_version} CLI",
@@ -204,22 +206,50 @@ def generate(version):
     if os.path.exists(target):
         raise Failure(f"{target} exists. Published fixtures don't change: run check, "
                       "or add a new version for new data.")
-    with tempfile.TemporaryDirectory() as out:
-        build(version, out)
+    with tempfile.TemporaryDirectory() as work:
+        out = os.path.join(work, version)
+        os.mkdir(out)
+        build(version, cli_path(duckdb_version_of(version), work), out)
         shutil.copytree(out, target)
     print(f"Wrote {target}")
 
 
+def describe_difference(cli, committed, regenerated):
+    """Prints where two versions of a file first differ, and for Parquet files
+    which column chunks differ, to show what the generator changed."""
+    a, b = read(committed), read(regenerated)
+    offset = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+    print(f"     {os.path.basename(committed)}: {len(a)} bytes committed, {len(b)} regenerated, "
+          f"first difference at byte {offset}")
+    if not committed.endswith(".parquet"):
+        return
+    sql = ("SELECT * EXCLUDE (file_name) FROM parquet_metadata('{}') ORDER BY row_group_id, column_id")
+    chunks_a = run_json(cli, sql.format(committed), os.path.dirname(committed))
+    chunks_b = run_json(cli, sql.format(regenerated), os.path.dirname(regenerated))
+    shown = 0
+    for chunk_a, chunk_b in zip(chunks_a, chunks_b):
+        changed = {k: (chunk_a[k], chunk_b.get(k)) for k in chunk_a if chunk_a[k] != chunk_b.get(k)}
+        if changed and shown < 3:
+            shown += 1
+            print(f"     row group {chunk_a['row_group_id']}, column {chunk_a['path_in_schema']}: " +
+                  ", ".join(f"{k} {old!r} -> {new!r}" for k, (old, new) in changed.items()))
+
+
 def check(version):
     target = os.path.join(PUBLIC, version)
-    with tempfile.TemporaryDirectory() as out:
-        build(version, out)
+    with tempfile.TemporaryDirectory() as work:
+        out = os.path.join(work, version)
+        os.mkdir(out)
+        cli = cli_path(duckdb_version_of(version), work)
+        build(version, cli, out)
         expected, actual = sorted(os.listdir(out)), sorted(os.listdir(target))
         if expected != actual:
             raise Failure(f"{target} holds {actual}, the generator writes {expected}")
         differ = [n for n in expected if read(os.path.join(out, n)) != read(os.path.join(target, n))]
+        for name in differ:
+            describe_difference(cli, os.path.join(target, name), os.path.join(out, name))
         if differ:
-            raise Failure(f"regenerated {', '.join(differ)} differ from {target}")
+            raise Failure(f"regenerated files don't match {target}: {', '.join(differ)}")
     print(f"{target} matches a fresh generation")
 
 
