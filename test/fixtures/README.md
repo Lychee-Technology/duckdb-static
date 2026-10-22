@@ -33,7 +33,7 @@ python3 test/fixtures/fixtures.py generate v2   # write a new version
 python3 test/fixtures/test_fixtures.py
 ```
 
-Generation runs single-threaded, with extension autoloading off, so the bytes don't depend on the machine or the network. It checks every query in `<version>.queries.sql` against the new files and fails with the expected and actual values if one differs. `.github/workflows/fixtures.yml` runs `check v1` and the tests on native arm64 and x86_64 runners.
+Generation runs single-threaded, with extension autoloading off, and writes uncompressed files, so the bytes don't depend on the machine or the network. A compressor isn't guaranteed to write the same bytes on every architecture; snappy, DuckDB's default, doesn't on arm64. It checks every query in `<version>.queries.sql` against the new files and fails with the expected and actual values if one differs. `.github/workflows/fixtures.yml` runs `check v1` and the tests on native arm64 and x86_64 runners.
 
 ## Hosting on Cloudflare Pages
 
@@ -44,7 +44,7 @@ The site serves the contents of `test/fixtures/public`. Reading it needs no cred
 
 The site is then at `https://<project>.pages.dev`, or a custom domain if you add one. That URL, without a version, is the base URL. Deploy the whole `public` directory every time, so older versions stay available.
 
-Pages limits a file to 25 MiB. The v1 files total under 0.5 MB.
+Pages limits a file to 25 MiB. The v1 files total 1.1 MB.
 
 ## Verifying a deployment
 

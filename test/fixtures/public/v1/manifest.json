@@ -2,12 +2,12 @@
   "version": "v1",
   "generator": "test/fixtures/fixtures.py with the DuckDB v2.0.0 CLI",
   "absent": "does-not-exist.parquet",
-  "total_size": 472069,
+  "total_size": 1108793,
   "files": [
     {
       "path": "basic.parquet",
-      "size": 2388,
-      "sha256": "47680fdbf05cfa17c971f74cb59e8dc73737df29c28e93298dcfbcfe34b76f5e",
+      "size": 3385,
+      "sha256": "8d1bb2c25e5942cdbc6b46df670f004f5a4d15c8761b65ca66a95eb5d2e2e78e",
       "rows": 100,
       "row_groups": 1,
       "schema": [
@@ -35,8 +35,8 @@
     },
     {
       "path": "multi_row_group.parquet",
-      "size": 456256,
-      "sha256": "f9db3381177a807549f5c448e0f9b385d5f8e83ed27f67e2c0a053785e3d8ee9",
+      "size": 1087892,
+      "sha256": "1e721aa2869ef9c2e87b8c18d55ada8a606bd4220715fc5cea89a86ceb90c718",
       "rows": 50000,
       "row_groups": 5,
       "schema": [
@@ -56,8 +56,8 @@
     },
     {
       "path": "nested.parquet",
-      "size": 2970,
-      "sha256": "78b910a7954c8cbb794479e7d6530a6c702ef8ddff68e992bdb35f13dec2ab03",
+      "size": 3753,
+      "sha256": "790190f5d29cbc2fe4d625418a02d71afbb2076c7bd98a10f7f7f1db2d973c70",
       "rows": 100,
       "row_groups": 1,
       "schema": [
@@ -81,8 +81,8 @@
     },
     {
       "path": "nullable.parquet",
-      "size": 10455,
-      "sha256": "231cf19850ee470edfcbf24506641ffbccb6fd345317eb7a8a142fd596a88dce",
+      "size": 13763,
+      "sha256": "360041d95e63b2163a9a084186d8d70e0ece837d040e5f59208b5d402916785d",
       "rows": 1000,
       "row_groups": 1,
       "schema": [
