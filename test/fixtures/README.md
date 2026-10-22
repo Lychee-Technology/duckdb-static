@@ -64,4 +64,4 @@ python3 test/fixtures/fixtures.py verify \
 - no Parquet response has a `Content-Encoding`, even though those requests offer gzip and brotli, because compression breaks byte ranges;
 - the `absent` file returns 404, rather than a fallback page with status 200.
 
-A missing `Accept-Ranges: bytes` header is printed as a warning, not counted as a failure. Each failure names the request and what was wrong. A failure in the network rather than in the response is labeled `DNS:`, `TLS:`, `timeout:` or `connection:`. The exit status is 0 if every check passed, 1 if any failed, and 2 if no base URL was given. Exit status 2 means nothing was verified; it is not a pass.
+A missing `Accept-Ranges: bytes` header is printed as a warning, not counted as a failure. Each failure names the request and what was wrong. A failure in the network rather than in the response is labeled `DNS:`, `TLS:`, `timeout:` or `connection:`, and a malformed or truncated response `protocol:`. The exit status is 0 if every check passed, 1 if any failed or the base URL isn't an `http://` or `https://` URL, and 2 if no base URL was given. Exit status 2 means nothing was verified; it is not a pass.

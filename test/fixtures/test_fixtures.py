@@ -34,6 +34,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.fault == "stale" and path.endswith(".parquet"):
             data = data[:-5] + b"X" + data[-4:]
         headers = {"Accept-Ranges": "bytes"}
+        if self.fault == "truncated" and path.endswith(".parquet"):
+            # Declares the whole file, then closes after 5 bytes.
+            return self.send(200, {**headers, "Content-Length": str(len(data))}, data[:5], send_body)
         match = re.fullmatch(r"bytes=(\d+)-(\d+)", self.headers.get("Range", ""))
         if match and self.fault != "ignores_range":
             start, end = int(match.group(1)), int(match.group(2))
@@ -46,9 +49,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def send(self, status, headers, body, send_body):
         self.send_response(status)
+        headers = {"Content-Length": str(len(body)), **headers}
         for name, value in headers.items():
             self.send_header(name, value)
-        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if send_body:
             self.wfile.write(body)
@@ -102,6 +105,19 @@ class VerifyTest(unittest.TestCase):
 
     def test_stale_bytes_fail(self):
         self.assert_fails("stale", "differ from bytes")
+
+    def test_truncated_body_fails(self):
+        code, output = verify(self.serve("truncated"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL GET basic.parquet: protocol: IncompleteRead(5 bytes read", output)
+        # The failure is one check, not the end of the run.
+        self.assertIn("of 22 checks passed", output)
+
+    def test_url_without_scheme_fails(self):
+        code, output = verify("raw.githubusercontent.com/x/y")
+        self.assertEqual(code, 1, output)
+        self.assertIn("isn't an http:// or https:// URL", output)
+        self.assertNotIn("Traceback", output)
 
     def test_unreachable_endpoint_fails(self):
         url = self.serve("good")

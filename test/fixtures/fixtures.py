@@ -21,6 +21,7 @@ Linux 2023's Python 3.9.
 """
 import argparse
 import hashlib
+import http.client
 import io
 import json
 import os
@@ -33,6 +34,7 @@ import sys
 import tarfile
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -264,6 +266,10 @@ def classify(error):
         return f"TLS: {reason}"
     if isinstance(reason, (socket.timeout, TimeoutError)):
         return f"timeout: {reason}"
+    if isinstance(reason, http.client.HTTPException):
+        # A malformed or truncated response, such as a body shorter than its
+        # Content-Length.
+        return f"protocol: {reason}"
     return f"connection: {reason}"
 
 
@@ -291,6 +297,12 @@ def verify(base, version):
         print("Not configured: pass a base URL or set DUCKDB_TEST_HTTPFS_BASE_URL. "
               "Nothing was verified.")
         return 2
+    parsed = urllib.parse.urlsplit(base)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        # A mistyped base URL is a failure, not "not configured": exit 2 would
+        # let a CI job read it as a skip.
+        print(f"FAIL {base!r} isn't an http:// or https:// URL. Nothing was verified.")
+        return 1
     local = os.path.join(PUBLIC, version)
     manifest_bytes = read(os.path.join(local, "manifest.json"))
     manifest = json.loads(manifest_bytes)
@@ -302,7 +314,7 @@ def verify(base, version):
     def check_one(name, test):
         try:
             problem = test()
-        except (urllib.error.URLError, OSError) as e:
+        except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
             problem = classify(e)
         results.append(problem is None)
         print(f"ok   {name}" if problem is None else f"FAIL {name}: {problem}")
