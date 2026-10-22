@@ -2,8 +2,10 @@
 """Generates, checks and verifies the Parquet fixtures in test/fixtures/public.
 
   fixtures.py generate <version>    write public/<version>/ from <version>.sql
-  fixtures.py check <version>       regenerate into a temporary directory and
-                                    compare byte for byte with public/<version>/
+  fixtures.py check [<version>]     regenerate into a temporary directory and
+                                    compare byte for byte with public/<version>/,
+                                    or with every version in public/ if none
+                                    is given
   fixtures.py verify [<base URL>] [--version <version>]
                                     check that <base URL>/<version>/ serves the
                                     committed files with working byte ranges
@@ -391,8 +393,8 @@ def verify(base, version):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
-    for name in ("generate", "check"):
-        commands.add_parser(name).add_argument("version")
+    commands.add_parser("generate").add_argument("version")
+    commands.add_parser("check").add_argument("version", nargs="?")
     verify_parser = commands.add_parser("verify")
     verify_parser.add_argument("base", nargs="?", default=os.environ.get("DUCKDB_TEST_HTTPFS_BASE_URL", ""))
     verify_parser.add_argument("--version", default="v1")
@@ -401,7 +403,10 @@ def main():
         if args.command == "generate":
             generate(args.version)
         elif args.command == "check":
-            check(args.version)
+            # Every committed version, so CI keeps covering new ones; one
+            # without a VERSIONS entry fails.
+            for version in [args.version] if args.version else sorted(os.listdir(PUBLIC)):
+                check(version)
         else:
             return verify(args.base, args.version)
     except Failure as e:
