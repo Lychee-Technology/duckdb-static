@@ -368,8 +368,9 @@ def verify(base, version):
             return None if status == 404 else f"status {status}, expected 404"
         return test
 
-    # httpfs never reads the manifest, so a compressed manifest is fine; only
-    # its bytes matter.
+    # httpfs never reads the manifest, so this request doesn't offer
+    # compression: a host that compresses JSON for clients that ask still
+    # passes. One that compresses it unasked fails, since its bytes differ.
     check_one("manifest.json matches the committed copy",
               same_bytes(f"{directory}/manifest.json", manifest_bytes, offer_compression=False))
     for entry in manifest["files"]:
