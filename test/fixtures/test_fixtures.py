@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Tests fixtures.py verify against a local server that serves test/fixtures/public
-correctly, or with one of the faults verify must report, and tests that generate
-and check guard the committed versions. The check test downloads the pinned
-DuckDB CLI unless DUCKDB_CLI is set.
+correctly, or with one of the faults verify must report, tests that generate
+and check guard the committed versions, and tests that a DUCKDB_CLI override
+still names the CLI after generation changes directories. The check test
+downloads the pinned DuckDB CLI unless DUCKDB_CLI is set.
 
 Usage: python3 test/fixtures/test_fixtures.py
 """
@@ -16,10 +17,14 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures.py")
 PUBLIC = os.path.join(HERE, "public")
+
+sys.path.insert(0, HERE)
+import fixtures
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -153,6 +158,44 @@ class VerifyTest(unittest.TestCase):
         code, output = verify()
         self.assertEqual(code, 2, output)
         self.assertIn("Not configured", output)
+
+
+class CliOverrideTest(unittest.TestCase):
+    """DUCKDB_CLI must still name the CLI after build changes directories."""
+
+    def setUp(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        self.bin = os.path.join(work, "bin")
+        os.mkdir(self.bin)
+        # Stands in for the CLI: reports v2.0.0 and its working directory.
+        with open(os.path.join(self.bin, "duckdb"), "w") as f:
+            f.write("#!/bin/sh\ncat >/dev/null\necho \"v2.0.0 $(pwd -P)\"\n")
+        os.chmod(os.path.join(self.bin, "duckdb"), 0o755)
+        self.elsewhere = os.path.realpath(os.path.join(work, "out"))
+        os.mkdir(self.elsewhere)
+        cwd = os.getcwd()
+        os.chdir(self.bin)
+        self.addCleanup(os.chdir, cwd)
+
+    def cli(self, value, path=None):
+        env = {"DUCKDB_CLI": value}
+        if path is not None:
+            env["PATH"] = path
+        with mock.patch.dict(os.environ, env):
+            return fixtures.cli_path("v2.0.0", self.elsewhere)
+
+    def test_relative_path_runs_from_another_directory(self):
+        cli = self.cli("./duckdb")
+        self.assertEqual(fixtures.run_cli(cli, "", self.elsewhere).split()[1], self.elsewhere)
+
+    def test_name_is_looked_up_in_path(self):
+        cli = self.cli("duckdb", self.bin + os.pathsep + os.environ["PATH"])
+        self.assertEqual(fixtures.run_cli(cli, "", self.elsewhere).split()[1], self.elsewhere)
+
+    def test_missing_cli_fails(self):
+        with self.assertRaisesRegex(fixtures.Failure, "isn't an executable file"):
+            self.cli("./missing")
 
 
 class GenerateCheckTest(unittest.TestCase):

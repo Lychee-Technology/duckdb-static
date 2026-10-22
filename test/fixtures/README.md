@@ -8,7 +8,7 @@ Small Parquet files with known contents, for testing httpfs reads of a real HTTP
 | `v1.sql` | Writes the v1 files. |
 | `v1.queries.sql` | The queries and the exact result each must give. |
 | `fixtures.py` | Generates, checks and verifies the files. Python 3.9 or later, standard library only. |
-| `test_fixtures.py` | Tests `fixtures.py verify` against a local server, `generate`'s refusal to overwrite a version, and `check`'s report of changed bytes. The `check` test downloads the pinned CLI unless `DUCKDB_CLI` is set. |
+| `test_fixtures.py` | Tests `fixtures.py verify` against a local server, `generate`'s refusal to overwrite a version, `check`'s report of changed bytes, and the `DUCKDB_CLI` override. The `check` test downloads the pinned CLI unless `DUCKDB_CLI` is set. |
 
 ## The v1 contract
 

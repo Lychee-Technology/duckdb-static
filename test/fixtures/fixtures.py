@@ -99,7 +99,14 @@ def parse_queries(path):
 def cli_path(duckdb_version, work):
     """Returns a DuckDB CLI of duckdb_version, downloading it if needed."""
     path = os.environ.get("DUCKDB_CLI")
-    if not path:
+    if path:
+        # build runs the CLI from its output directory, so a relative path is
+        # made absolute here. A name without a slash is looked up in PATH.
+        found = shutil.which(path)
+        if not found:
+            raise Failure(f"DUCKDB_CLI={path} isn't an executable file")
+        path = os.path.abspath(found)
+    else:
         machine = platform.machine()
         if machine not in CLI_RELEASES[duckdb_version]:
             raise Failure(f"no pinned DuckDB {duckdb_version} CLI for {machine}")
