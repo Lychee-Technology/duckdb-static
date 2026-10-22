@@ -57,7 +57,9 @@ DuckDB itself is linked statically. libstdc++, libcurl and OpenSSL are linked dy
 Since DuckDB 2.0, a statically linked extension does nothing until the program registers it, and the registration has to happen before the first database opens. The bundle contains DuckDB's generated loader for its extensions, so either of these works:
 
 - Call `duckdb_register_static_extensions()` before opening a database. It returns 0 on success. No DuckDB header declares it, so declare it yourself: `int32_t duckdb_register_static_extensions(void);`
-- Link with `-Wl,-u,duckdb_register_static_extensions`. That pulls the loader into the binary, and it registers the extensions before `main`. [`example/`](example/) does this, so its Go code doesn't change.
+- Link with `-Wl,-u,duckdb_register_static_extensions`. That pulls the loader into the binary, and it registers the extensions before `main`.
+
+`duckdb-go` `v2.20000.0` and later call `duckdb_register_static_extensions()` themselves, so a Go program like [`example/`](example/) needs neither.
 
 Doing both is harmless, because registering an extension twice does nothing. If neither is done, DuckDB still opens, but the bundled extensions are missing. For example, `SELECT to_minutes(5)` fails with an error naming `core_functions`. DuckDB loads the extensions in the order `core_functions`, `parquet`, `json`, `icu`, `httpfs`, so `LOAD parquet` in your code is a no-op.
 

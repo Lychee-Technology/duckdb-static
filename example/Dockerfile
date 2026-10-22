@@ -38,11 +38,11 @@ ENV GOOS=${GOOS} \
 
 # DuckDB specific flags
 # LIBS_DIR points to the flavor-specific libs directory (e.g. libs/parquet).
-# -Wl,-u,duckdb_register_static_extensions links the bundle's extension loader,
-# which registers the bundled extensions before main. Since DuckDB 2.0, a
-# statically linked extension isn't loaded until it is registered.
+# Since DuckDB 2.0, a statically linked extension isn't loaded until it is
+# registered. duckdb-go-bindings calls duckdb_register_static_extensions() when
+# its package initializes, and the bundle's loader object defines it.
 ENV CPPFLAGS="-DDUCKDB_STATIC_BUILD" \
-    CGO_LDFLAGS="-L/src/${LIBS_DIR} -Wl,-u,duckdb_register_static_extensions -lduckdb_bundle ${CGO_EXTRA_LDFLAGS} -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"
+    CGO_LDFLAGS="-L/src/${LIBS_DIR} -lduckdb_bundle ${CGO_EXTRA_LDFLAGS} -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"
 
 WORKDIR /src
 
