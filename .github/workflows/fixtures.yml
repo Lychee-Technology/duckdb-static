@@ -1,5 +1,5 @@
 # Regenerates the committed Parquet fixtures on native arm64 and x86_64 runners
-# and fails unless the bytes match, and tests fixtures.py verify. It doesn't
+# and fails unless the bytes match, and runs fixtures.py's tests. It doesn't
 # read the public fixture site. See test/fixtures/README.md.
 name: Fixtures
 
@@ -38,5 +38,5 @@ jobs:
       - name: Regenerate and compare
         run: python3 test/fixtures/fixtures.py check
 
-      - name: Test verify
+      - name: Test fixtures.py
         run: python3 test/fixtures/test_fixtures.py -v
