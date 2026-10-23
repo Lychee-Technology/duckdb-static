@@ -33,7 +33,7 @@ The bundle contains DuckDB 2.0.0 (the version in [`duckdb_version`](duckdb_versi
 A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** Pushing a `v*` tag starts the workflow.
 2.  **Build:** Compiles DuckDB and its extensions on Amazon Linux 2023, once for arm64 and once for amd64, and merges them into one static library with [`scripts/package-bundle.sh`](scripts/package-bundle.sh).
-3.  **Smoke test:** Links [`test/smoke.c`](test/smoke.c) against each bundle and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks that the extensions are missing when nothing registers them.
+3.  **Smoke test:** Links [`test/smoke.c`](test/smoke.c) against each bundle and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that the extensions are missing when nothing registers them. It fails if a check fails or if none ran.
 4.  **Release:** Packages each build as a `.tar.xz` file and publishes it to GitHub Releases.
 5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`.
 
