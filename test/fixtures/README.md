@@ -1,6 +1,6 @@
 # Parquet fixtures
 
-Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle.
+Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries both ways; see the main README's [Building and testing](../../README.md#building-and-testing).
 
 | Path | What it is |
 |---|---|
@@ -19,7 +19,7 @@ Small Parquet files with known contents, for testing httpfs reads of a real HTTP
 | `nested.parquet` | 100 | 1 | lists with NULL elements, empty and NULL lists, structs, NULL structs, maps |
 | `multi_row_group.parquet` | 50000 | 5 | predicates and projections that skip row groups and column chunks |
 
-The v1 files total 1.1 MB. `manifest.json` records each file's size, sha256, row count, row groups and schema, and the queries from `v1.queries.sql`. Each query returns one row and one column, and its `expected` value is that column cast to VARCHAR, which is what `duckdb_value_varchar` returns. In each query, replace `{dir}` with the directory that holds the files: a local path, or `<base URL>/v1`. `absent` names a file that doesn't exist, which the host must answer with 404.
+The v1 files total 1.1 MB. `manifest.json` records each file's size, sha256, row count, row groups and schema, and the queries from `v1.queries.sql`. Each query returns one row and one column, and its `expected` value is that column cast to VARCHAR. `duckdb_value_varchar` returns NULL for a list, so `test/smoke.c` casts in SQL. In each query, replace `{dir}` with the directory that holds the files: a local path, or `<base URL>/v1`. `absent` names a file that doesn't exist, which the host must answer with 404.
 
 The manifest's hashes are the contract. Once a version is committed, its files never change, so a test pinned to `v1` keeps meaning the same thing. New or different data, or a different DuckDB, makes a new version (`v2.sql`, `v2.queries.sql` and a `VERSIONS` entry in `fixtures.py`) alongside the old one. `fixtures.py generate` refuses to overwrite an existing version.
 
@@ -46,7 +46,7 @@ https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/<commit>/test/
 
 `<commit>` is the full SHA of a commit on `main` that contains the fixture version the test reads. The files at a SHA never change, and since a committed version never changes either, any later commit serves v1 identically. Don't put a branch name in place of the SHA: the URL would follow new commits, and GitHub caches raw files for five minutes (`Cache-Control: max-age=300`), so it can serve old files right after a push.
 
-Reading needs no credentials. GitHub rate-limits unauthenticated requests to `raw.githubusercontent.com`, and a `verify` run makes 22 of them. A `429` status means the limit was hit, not that the bundle or the fixtures are wrong.
+Reading needs no credentials. GitHub rate-limits unauthenticated requests to `raw.githubusercontent.com`, and a `verify` run makes 22 of them. A `429` status means the limit was hit, not that the bundle or the fixtures are wrong. GitHub says authenticated requests get higher limits, so `test/smoke.sh` sends `GITHUB_TOKEN` when it is set, but only to `https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/`. `verify` always reads without it.
 
 Cloudflare Pages was tried first and doesn't work. It answers a ranged `GET` with `200` and the whole file, and its `HEAD` responses have no `Content-Length`, so httpfs can't read Parquet from it.
 
