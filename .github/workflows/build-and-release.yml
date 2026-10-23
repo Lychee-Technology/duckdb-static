@@ -257,6 +257,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
+    # One release job per tag at a time, so a second dispatch's guard runs
+    # after the first has created the release. A run that is still waiting is
+    # cancelled when a newer one queues for the same tag.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
 
     steps:
       # A dispatch on a tag that already has a release, even a draft, would

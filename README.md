@@ -132,7 +132,7 @@ A dispatch on a tag that already has a release, including a draft, fails in the 
 gh workflow run build-and-release.yml --ref <tag> -f overwrite-release=true
 ```
 
-Without the input, the dispatch still builds and tests the tag before the release job fails, so it can retest a release without changing it. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
+Without the input, the dispatch still builds and tests the tag before the release job fails, so it can retest a release without changing it. Release jobs for the same tag run one at a time, so of two dispatches on a tag without a release, the second fails once the first has released. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
 
 #### The HTTPS check
 How to read `httpfs-remote`:
