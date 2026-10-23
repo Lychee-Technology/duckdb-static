@@ -83,7 +83,7 @@ CXX=gcc14-g++ CXXFLAGS="-march=x86-64-v3 -D_GLIBCXX_USE_CXX11_ABI=1 -ffunction-s
 CC=gcc14-gcc test/smoke.sh libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz v2.0.0
 ```
 
-On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` file name. To build and invoke the Lambda example against a local bundle, see [`example/README.md`](example/README.md).
+On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` file name. To build and invoke the Lambda example against a local bundle, see [`example/README.md`](example/README.md). The Parquet fixtures for testing httpfs against a public HTTPS site, and how to host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md).
 
 
 ## Contributing

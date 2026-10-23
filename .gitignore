@@ -10,3 +10,7 @@ libs/
 *.json
 *.log
 data/
+__pycache__/
+# The committed test fixtures, which the rules above would ignore.
+!/test/fixtures/public/**/*.parquet
+!/test/fixtures/public/**/manifest.json
