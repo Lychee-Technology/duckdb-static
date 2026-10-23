@@ -4,12 +4,15 @@
 #
 # Usage: test/smoke.sh <libduckdb_bundle-*.tar.xz> <expected DuckDB version>
 #
-# Builds the program three ways (see test/smoke.c): registering the extensions
-# with a call, registering them with a link flag, and not registering them,
-# which must leave them missing. Each binary starts with an empty data
-# directory and must report how many checks passed. The httpfs checks read from
-# a local HTTP server, so the test needs no network access. CC defaults to cc;
-# on Amazon Linux 2023 set it to the gcc14 the bundle was built with.
+# Before building anything, it checks that the tarball holds exactly the archive
+# and its two headers, and that the archive is built for this host's
+# architecture. Then it builds the program three ways (see test/smoke.c):
+# registering the extensions with a call, registering them with a link flag,
+# and not registering them, which must leave them missing. Each binary may only
+# need the shared libraries on an allowlist below. Each starts with an empty
+# data directory and must report how many checks passed. The httpfs checks read
+# from a local HTTP server, so the test needs no network access. CC defaults to
+# cc; on Amazon Linux 2023 set it to the gcc14 the bundle was built with.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -29,9 +32,43 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$work/bundle" "$work/data/bucket"
-tar -xJf "$tarball" -C "$work/bundle"
+if ! tar -xJf "$tarball" -C "$work/bundle"; then
+	echo "FAIL $tarball is not a readable .tar.xz"
+	exit 1
+fi
 echo "Tarball contents:"
 ls -l "$work/bundle"
+
+# The release tarball holds exactly the archive and the two public headers.
+# Anything else means scripts/package-bundle.sh packaged the wrong files.
+expected_files=$'duckdb.h\nduckdb_static_extension.h\nlibduckdb_bundle.a'
+files=$(find "$work/bundle" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+if [ "$files" != "$expected_files" ]; then
+	echo "FAIL the tarball holds:"
+	sed 's/^/     /' <<<"$files"
+	echo "     expected exactly:"
+	sed 's/^/     /' <<<"$expected_files"
+	exit 1
+fi
+echo "ok   tarball holds exactly: ${expected_files//$'\n'/ }"
+
+# Every member of the archive must be built for this host's architecture. A
+# mismatch means the tarball is for the other architecture, or the build mixed
+# objects from two.
+case $(uname -m) in
+x86_64) machine='Advanced Micro Devices X86-64' ;;
+aarch64) machine=AArch64 ;;
+*)
+	echo "FAIL no expected archive machine type for a $(uname -m) host"
+	exit 1
+	;;
+esac
+machines=$(readelf -h "$work/bundle/libduckdb_bundle.a" | sed -n 's/^ *Machine: *//p' | sort -u | paste -sd, -) || true
+if [ "$machines" != "$machine" ]; then
+	echo "FAIL libduckdb_bundle.a is built for '${machines:-no ELF objects}', expected '$machine' on this $(uname -m) host"
+	exit 1
+fi
+echo "ok   libduckdb_bundle.a is built for $machine"
 
 # Serves data/ with byte ranges, which httpfs uses to read parquet, and logs
 # each request with its Authorization scheme.
@@ -94,15 +131,50 @@ libs=(-L"$work/bundle" -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthr
 build() {
 	local name=$1
 	shift
-	"$CC" -O2 -Wall -Werror -I"$work/bundle" "$here/smoke.c" -o "$work/$name" "$@" "${libs[@]}" -Wl,--gc-sections
+	# A failure here means a shipped header doesn't compile or the archive
+	# lacks a symbol a consumer links, such as a dropped extension member.
+	if ! "$CC" -O2 -Wall -Werror -I"$work/bundle" "$here/smoke.c" -o "$work/$name" "$@" "${libs[@]}" -Wl,--gc-sections; then
+		echo "FAIL $name doesn't build against the tarball's headers and archive"
+		exit 1
+	fi
 }
 build smoke-register -DSMOKE_REGISTER
 build smoke-linkflag -Wl,-u,duckdb_register_static_extensions
 build smoke-unlinked -DSMOKE_UNLINKED
 
+# A binary linked against the bundle may need only these shared libraries:
+# libstdc++, libm, libcurl, libssl and libcrypto from the README's link line,
+# plus libgcc_s, libc and the dynamic loader. -lpthread and -ldl add nothing,
+# because glibc 2.34 moved both into libc. Libraries are matched by name without
+# the soname version, so an Amazon Linux 2023 package update doesn't break the
+# check. libduckdb is never on the list, because the bundle links DuckDB
+# statically. Anything else is a new run-time dependency for every consumer.
+check_needed() {
+	local name=$1 lib needed ok=0
+	needed=$(readelf -d "$work/$name" | sed -n 's/.*(NEEDED).*\[\(.*\)\]$/\1/p')
+	if [ -z "$needed" ]; then
+		echo "FAIL $name needs no shared libraries, expected at least libc"
+		return 1
+	fi
+	for lib in $needed; do
+		case ${lib%%.so*} in
+		libstdc++ | libm | libcurl | libssl | libcrypto | libgcc_s | libc | ld-linux-*) ;;
+		*)
+			echo "FAIL $name needs $lib, which isn't on smoke.sh's allowlist"
+			ok=1
+			;;
+		esac
+	done
+	if [ $ok -eq 0 ]; then
+		echo "ok   $name needs only allowed libraries: $(paste -sd' ' <<<"$needed")"
+	fi
+	return $ok
+}
+
 status=0
 for name in smoke-register smoke-linkflag smoke-unlinked; do
 	echo "== $name"
+	check_needed "$name" || status=1
 	rm -rf "$work/data"
 	mkdir -p "$work/data/bucket"
 	: >"$work/requests.log"
