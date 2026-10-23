@@ -1,0 +1,43 @@
+{
+  "version": "v2",
+  "generator": "test/fixtures/fixtures.py with the DuckDB v2.0.0 CLI",
+  "absent": "does-not-exist.parquet",
+  "total_size": 10541,
+  "files": [
+    {
+      "path": "tiny.parquet",
+      "size": 10541,
+      "sha256": "3991184193f8025a683c78aa0a6e23b1d315fa82b2960846680da44fd3c5562c",
+      "rows": 1200,
+      "row_groups": 1,
+      "schema": [
+        {
+          "name": "id",
+          "type": "BIGINT"
+        },
+        {
+          "name": "bucket",
+          "type": "INTEGER"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/tiny.parquet')",
+      "expected": "1200"
+    },
+    {
+      "sql": "SELECT sum(id) FROM read_parquet('{dir}/tiny.parquet')",
+      "expected": "720600"
+    },
+    {
+      "sql": "SELECT sum(bucket) FROM read_parquet('{dir}/tiny.parquet')",
+      "expected": "3597"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/tiny.parquet') WHERE id > 1",
+      "expected": "1199"
+    }
+  ]
+}

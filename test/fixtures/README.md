@@ -1,14 +1,15 @@
 # Parquet fixtures
 
-Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set; see [`test/README.md`](../README.md).
+Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set; see [`test/README.md`](../README.md). The benchmark in [`example/bench/`](../../example/bench/README.md) reads the v2 file over HTTP from the same local server, `serve.py`, and never from GitHub.
 
 | Path | What it is |
 |---|---|
-| `public/` | The files tests read. `public/v1/` holds the v1 files and `manifest.json`. |
-| `v1.sql` | Writes the v1 files. |
-| `v1.queries.sql` | The queries and the exact result each must give. |
+| `public/` | The files tests read. `public/v1/` holds the v1 files and `manifest.json`, `public/v2/` the v2 ones. |
+| `v1.sql`, `v2.sql` | Write the files of each version. |
+| `v1.queries.sql`, `v2.queries.sql` | The queries and the exact result each must give. |
 | `fixtures.py` | Generates, checks and verifies the files. Python 3.9 or later, standard library only. |
-| `test_fixtures.py` | Tests `fixtures.py verify` against a local server, `generate`'s refusal to overwrite a version, `check`'s report of changed bytes, and the `DUCKDB_CLI` override. The `check` test downloads the pinned CLI unless `DUCKDB_CLI` is set. |
+| `serve.py` | Serves files over HTTP with byte ranges and logs each request, as `test/smoke.sh` and `example/bench/run.sh` need. Its docstring has the details. |
+| `test_fixtures.py` | Tests `fixtures.py verify` against a local server, `generate`'s refusal to overwrite a version, `check`'s report of changed bytes, the `DUCKDB_CLI` override, and `serve.py`'s responses and logs, including that `verify` passes against it. The `check` test downloads the pinned CLI unless `DUCKDB_CLI` is set. |
 
 ## The v1 contract
 
@@ -23,14 +24,22 @@ The v1 files total 1.1 MB. `manifest.json` records each file's size, sha256, row
 
 The manifest's hashes are the contract. Once a version is committed, its files never change, so a test pinned to `v1` keeps meaning the same thing. New or different data, or a different DuckDB, makes a new version (`v2.sql`, `v2.queries.sql` and a `VERSIONS` entry in `fixtures.py`) alongside the old one. `fixtures.py generate` refuses to overwrite an existing version. `test/smoke.sh` keeps reading v1 until `test/smoke.c` moves to the new version: its `FIXTURES` names the version, and `check_fixtures` expects that version's query count and its two queries that look up one id in `multi_row_group.parquet`.
 
+## The v2 contract
+
+| File | Rows | Row groups | Covers |
+|---|---|---|---|
+| `tiny.parquet` | 1200 | 1 | a file of about 10 KB, for the benchmark's first query over HTTP |
+
+`tiny.parquet` has columns `id BIGINT` (1 to 1200) and `bucket INTEGER` (`id % 7`), uncompressed: 10,541 bytes. `SELECT sum(id)` over it gives `720600`, the benchmark's expected result, and has to decode every page of `id`, most of the file. v2 adds a file rather than changing v1, which keeps its meaning for `test/smoke.c` and the public host.
+
 ## Generating and checking
 
-`fixtures.py` writes the files with the official DuckDB CLI pinned for each version in `VERSIONS`: v1 uses DuckDB v2.0.0, independent of `duckdb_version`. It downloads the CLI for the host's architecture (x86_64 or aarch64) and checks its sha256. To avoid the download, set `DUCKDB_CLI` to a CLI that reports the same version.
+`fixtures.py` writes the files with the official DuckDB CLI pinned for each version in `VERSIONS`: v1 and v2 use DuckDB v2.0.0, independent of `duckdb_version`. It downloads the CLI for the host's architecture (x86_64 or aarch64) and checks its sha256. To avoid the download, set `DUCKDB_CLI` to a CLI that reports the same version.
 
 ```bash
 python3 test/fixtures/fixtures.py check v1      # regenerate and compare with public/v1
 python3 test/fixtures/fixtures.py check         # the same for every version in public/
-python3 test/fixtures/fixtures.py generate v2   # write a new version
+python3 test/fixtures/fixtures.py generate v3   # write a new version
 python3 test/fixtures/test_fixtures.py
 ```
 
@@ -57,7 +66,7 @@ python3 test/fixtures/fixtures.py verify \
   https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/$(git rev-parse origin/main)/test/fixtures/public
 ```
 
-`verify` reads the base URL from `DUCKDB_TEST_HTTPFS_BASE_URL` when none is given. Against `<base URL>/v1/` it checks that:
+`verify` reads the base URL from `DUCKDB_TEST_HTTPFS_BASE_URL` when none is given. Against `<base URL>/v1/`, or another version's directory with `--version`, it checks that:
 
 - `manifest.json` is byte-identical to the committed copy, so the URL points at a commit with the same fixtures;
 - for each file, `HEAD` returns 200 and the exact `Content-Length`, and `GET` returns the committed bytes;
