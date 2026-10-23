@@ -1,6 +1,6 @@
 # Parquet fixtures
 
-Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries both ways; see the main README's [Building and testing](../../README.md#building-and-testing).
+Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set; see the main README's [Building and testing](../../README.md#building-and-testing).
 
 | Path | What it is |
 |---|---|
@@ -21,7 +21,7 @@ Small Parquet files with known contents, for testing httpfs reads of a real HTTP
 
 The v1 files total 1.1 MB. `manifest.json` records each file's size, sha256, row count, row groups and schema, and the queries from `v1.queries.sql`. Each query returns one row and one column, and its `expected` value is that column cast to VARCHAR. `duckdb_value_varchar` returns NULL for a list, so `test/smoke.c` casts in SQL. In each query, replace `{dir}` with the directory that holds the files: a local path, or `<base URL>/v1`. `absent` names a file that doesn't exist, which the host must answer with 404.
 
-The manifest's hashes are the contract. Once a version is committed, its files never change, so a test pinned to `v1` keeps meaning the same thing. New or different data, or a different DuckDB, makes a new version (`v2.sql`, `v2.queries.sql` and a `VERSIONS` entry in `fixtures.py`) alongside the old one. `fixtures.py generate` refuses to overwrite an existing version.
+The manifest's hashes are the contract. Once a version is committed, its files never change, so a test pinned to `v1` keeps meaning the same thing. New or different data, or a different DuckDB, makes a new version (`v2.sql`, `v2.queries.sql` and a `VERSIONS` entry in `fixtures.py`) alongside the old one. `fixtures.py generate` refuses to overwrite an existing version. `test/smoke.sh` keeps reading v1 until `test/smoke.c` moves to the new version: its `FIXTURES` names the version, and `check_fixtures` expects that version's query count and its two queries that look up one id in `multi_row_group.parquet`.
 
 ## Generating and checking
 

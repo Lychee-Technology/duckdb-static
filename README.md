@@ -94,7 +94,7 @@ DUCKDB_TEST_HTTPFS_BASE_URL=https://raw.githubusercontent.com/Lychee-Technology/
 
 After the local checks, `test/fixtures/fixtures.py verify` checks that the host serves the committed files with working byte ranges, and then the same queries run against it. With `GITHUB_TOKEN` set, requests to this repository's files on `raw.githubusercontent.com` send it as a bearer token, because GitHub limits anonymous downloads more tightly; it is never sent to another URL or printed. Without `DUCKDB_TEST_HTTPFS_BASE_URL`, the summary at the end says the remote run is not configured, which is not a pass.
 
-The fixture checks set httpfs's retries (`http_retries`, `http_retry_wait_ms`, `http_timeout`) rather than re-running a failed query, so a wrong result can't be retried into a pass. On a `429` or `503`, httpfs adds up to five retries and honors `Retry-After` up to 20 s. Against GitHub, a run makes 25 requests for the queries, plus 22 for the preflight.
+The fixture checks set httpfs's retries (`http_retries`, `http_retry_wait_ms`, `http_timeout`) rather than re-running a failed query, so a wrong result can't be retried into a pass. On a `429` or `503`, httpfs adds up to five retries and honors `Retry-After` up to 20 s. Against GitHub, a run without retries makes 25 requests for the queries, plus 22 for the preflight.
 
 `test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `DUCKDB_TEST_HTTPFS_BASE_URL` or `GITHUB_TOKEN` that can't be used.
 
