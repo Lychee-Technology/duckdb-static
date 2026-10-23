@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# throwaway
 # Smoke-tests a release tarball: extracts it, links test/smoke.c against
 # libduckdb_bundle.a with the link flags a consumer uses, and runs it.
 #
