@@ -17,6 +17,9 @@
 // Prints one line per check and ends with "<n> checks passed". It fails if any
 // check failed or if none ran.
 #include "duckdb.h"
+// The tarball's other header. Nothing else compiles it, and no shipped header
+// declares duckdb_register_static_extensions, so it is declared below.
+#include "duckdb_static_extension.h"
 
 #include <stdarg.h>
 #include <stdbool.h>

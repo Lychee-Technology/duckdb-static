@@ -131,7 +131,12 @@ libs=(-L"$work/bundle" -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthr
 build() {
 	local name=$1
 	shift
-	"$CC" -O2 -Wall -Werror -I"$work/bundle" "$here/smoke.c" -o "$work/$name" "$@" "${libs[@]}" -Wl,--gc-sections
+	# A failure here means a shipped header doesn't compile or the archive
+	# lacks a symbol a consumer links, such as a dropped extension member.
+	if ! "$CC" -O2 -Wall -Werror -I"$work/bundle" "$here/smoke.c" -o "$work/$name" "$@" "${libs[@]}" -Wl,--gc-sections; then
+		echo "FAIL $name doesn't build against the tarball's headers and archive"
+		exit 1
+	fi
 }
 build smoke-register -DSMOKE_REGISTER
 build smoke-linkflag -Wl,-u,duckdb_register_static_extensions
