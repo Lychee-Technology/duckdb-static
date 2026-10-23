@@ -130,3 +130,4 @@ Add it to `smoke.c` or `smoke.sh` rather than starting another harness, and don'
 - **A new extension:** it changes several files that have to agree; [`AGENTS.md`](../AGENTS.md) lists them.
 
 Update the coverage table above when a check adds to what the tests cover.
+
