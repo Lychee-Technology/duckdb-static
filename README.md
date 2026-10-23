@@ -34,13 +34,13 @@ A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** Pushing a `v*` tag starts the workflow.
 2.  **Build:** Compiles DuckDB and its extensions on Amazon Linux 2023, once for arm64 and once for amd64, and merges them into one static library with [`scripts/package-bundle.sh`](scripts/package-bundle.sh).
 3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, `duckdb.h` and `duckdb_static_extension.h`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against the bundle and the shipped headers and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server, and that the extensions are missing when nothing registers them. It fails if a check fails, if none ran, or if a test binary needs a shared library other than the ones listed under [Linking and registering the extensions](#linking-and-registering-the-extensions).
-4.  **Release:** Packages each build as a `.tar.xz` file and publishes it to GitHub Releases.
-5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`.
+4.  **Release:** Checks each `.tar.xz` file against the sha256 its build recorded after the smoke test, and publishes the files and a `SHA256SUMS` to GitHub Releases.
+5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`, and runs the fixture queries over HTTPS. The release waits for neither; see [Releasing](#releasing).
 
 ### Installation / Usage
 You don't need to build from source:
 1.  Go to the [Releases](https://github.com/Lychee-Technology/duckdb-static/releases) page.
-2.  Download the latest `.tar.xz` file for your architecture.
+2.  Download the latest `.tar.xz` file for your architecture. To check it, download `SHA256SUMS` next to it and run `sha256sum -c --ignore-missing SHA256SUMS`.
 3.  Link the `libduckdb_bundle.a` inside it into your function at build time, and register the extensions as described below. [`example/`](example/) does this for a Go Lambda.
 
 The bundle is compiled for `x86-64-v3` on amd64 (Intel Haswell, AMD Zen, or newer) and for `armv8.2-a+crypto+fp16+dotprod+lse` on arm64 (AWS Graviton2 or newer). On older CPUs it crashes with an illegal-instruction error. Both AWS Lambda architectures meet these requirements.
@@ -117,6 +117,36 @@ When the smoke test fails, a line starting with `FAIL` says what went wrong:
 - `read the fixtures without the token` or `sent the fixtures' token outside its scope`: httpfs didn't apply an `http` secret's `BEARER_TOKEN` to exactly the URLs under its `SCOPE`, which the remote run relies on to keep `GITHUB_TOKEN` away from other hosts.
 - `remote: failed the preflight`: the host doesn't serve the fixtures with working byte ranges, or the base URL points at the wrong place, such as a commit without the fixtures. `fixtures.py verify`'s `FAIL` lines above say which request failed.
 - `remote: not run: DUCKDB_TEST_HTTPFS_BASE_URL isn't an http:// or https:// URL`: the variable is mistyped. This exits 1, not 3, so that automation doesn't take it for a host failure.
+
+### Releasing
+A run for a `v*` tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload.
+
+Two jobs run alongside the release, and the release waits for neither:
+
+- `example` builds and invokes the Go Lambda. A DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
+- `httpfs-remote` runs the fixture queries over HTTPS. It stays a separate signal until the fixture hosting has proven reliable; see below.
+
+A dispatch on a tag that already has a release, including a draft, fails in the release job and leaves the release as it is. To replace its assets, dispatch with `overwrite-release`:
+
+```bash
+gh workflow run build-and-release.yml --ref <tag> -f overwrite-release=true
+```
+
+Without the input, the dispatch still builds and tests the tag, so it can retest a release without changing it. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
+
+#### The HTTPS check
+How to read `httpfs-remote`:
+
+- **Skipped:** `DUCKDB_TEST_HTTPFS_BASE_URL` was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
+- **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.
+- **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and every check the bundle got to run passed. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
+- **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
+
+Making `httpfs-remote` required is a separate decision, recorded on an issue. It needs evidence that GitHub serves the fixtures reliably: the job's summaries from release and dispatch runs on both architectures, including how often they show host failures or `Rate-limited`. The change that makes it required has to:
+
+- add `httpfs-remote` to the release job's `needs`;
+- make the job fail, not skip, when the variable is unset. A job that needs a skipped job is skipped too, so an unset variable would skip the release with no error saying why;
+- say what an outage does. A required job's host failure holds the release until a re-run passes; after the artifacts expire, dispatch on the tag to build it again.
 
 
 ## Contributing
