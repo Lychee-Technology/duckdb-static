@@ -11,9 +11,13 @@
 // Usage: smoke <expected version> <data dir> <host:port of test/smoke.sh's server>
 // The server serves <data dir>, so a file written there can be read back over
 // HTTP and, under bucket/, over S3.
+//
+// Prints one line per check and ends with "<n> checks passed". It fails if any
+// check failed or if none ran.
 #include "duckdb.h"
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -27,12 +31,42 @@ int32_t duckdb_register_static_extensions(void);
 // in a build without loadable-extension support.
 #define NO_LOADABLE "this build does not link the loadable_extensions library"
 
+static duckdb_database db;
 static duckdb_connection con;
-static int failures;
+static int passes, failures;
+
+static void pass(const char *sql, const char *outcome) {
+	printf("ok   %s -> %s\n", sql, outcome);
+	passes++;
+}
 
 static void fail(const char *sql, const char *message) {
 	printf("FAIL %s\n     %s\n", sql, message);
 	failures++;
+}
+
+// Opens the database file at path, or an in-memory database when path is NULL,
+// and points the checks at it.
+static bool open_database(const char *path) {
+	char *error = NULL;
+	char what[4096];
+	snprintf(what, sizeof(what), "open %s", path ? path : "an in-memory database");
+	if (duckdb_open_ext(path, &db, NULL, &error) != DuckDBSuccess) {
+		fail(what, error ? error : "unknown error");
+		duckdb_free(error);
+		return false;
+	}
+	if (duckdb_connect(db, &con) != DuckDBSuccess) {
+		fail(what, "could not connect");
+		duckdb_close(&db);
+		return false;
+	}
+	return true;
+}
+
+static void close_database(void) {
+	duckdb_disconnect(&con);
+	duckdb_close(&db);
 }
 
 static char *format_sql(const char *format, va_list args) {
@@ -41,7 +75,8 @@ static char *format_sql(const char *format, va_list args) {
 	return sql;
 }
 
-// Checks that the query succeeds and that the first value of its result is expected.
+// Checks that the query succeeds and that the first value of its result is
+// expected, or is NULL when expected is NULL.
 __attribute__((format(printf, 2, 3))) static void expect(const char *expected, const char *format, ...) {
 	va_list args;
 	va_start(args, format);
@@ -54,13 +89,20 @@ __attribute__((format(printf, 2, 3))) static void expect(const char *expected, c
 	} else if (duckdb_row_count(&result) == 0 || duckdb_column_count(&result) == 0) {
 		fail(sql, "no result");
 	} else {
-		char *got = duckdb_value_varchar(&result, 0, 0);
-		if (!got || strcmp(got, expected) != 0) {
-			char message[1024];
-			snprintf(message, sizeof(message), "expected '%s', got '%s'", expected, got ? got : "NULL");
-			fail(sql, message);
+		char *got = duckdb_value_is_null(&result, 0, 0) ? NULL : duckdb_value_varchar(&result, 0, 0);
+		if (expected ? got && strcmp(got, expected) == 0 : !got) {
+			pass(sql, got ? got : "NULL");
 		} else {
-			printf("ok   %s -> %s\n", sql, got);
+			// Strings are quoted, so a NULL can't be mistaken for the string 'NULL'.
+			char want[1024] = "NULL", have[1024] = "NULL", message[2100];
+			if (expected) {
+				snprintf(want, sizeof(want), "'%s'", expected);
+			}
+			if (got) {
+				snprintf(have, sizeof(have), "'%s'", got);
+			}
+			snprintf(message, sizeof(message), "expected %s, got %s", want, have);
+			fail(sql, message);
 		}
 		duckdb_free(got);
 	}
@@ -83,7 +125,35 @@ __attribute__((format(printf, 2, 3))) static void expect_error(const char *fragm
 		         duckdb_result_error(&result));
 		fail(sql, message);
 	} else {
-		printf("ok   %s -> error containing '%s'\n", sql, fragment);
+		char outcome[1024];
+		snprintf(outcome, sizeof(outcome), "error containing '%s'", fragment);
+		pass(sql, outcome);
+	}
+	duckdb_destroy_result(&result);
+}
+
+// Checks that the query fails with an error of the given duckdb_error_type. The
+// type is part of the C API, so it doesn't change when DuckDB rewords a message.
+// Nothing uses it yet.
+#define expect_error_type(type, ...) check_error_type(type, #type, __VA_ARGS__)
+__attribute__((format(printf, 3, 4), unused)) static void check_error_type(duckdb_error_type type,
+                                                                           const char *type_name,
+                                                                           const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	const char *sql = format_sql(format, args);
+	va_end(args);
+
+	duckdb_result result;
+	if (duckdb_query(con, sql, &result) == DuckDBSuccess) {
+		fail(sql, "succeeded, expected an error");
+	} else if (duckdb_result_error_type(&result) != type) {
+		char message[2048];
+		snprintf(message, sizeof(message), "expected %s (%d), got error type %d: %s", type_name, (int)type,
+		         (int)duckdb_result_error_type(&result), duckdb_result_error(&result));
+		fail(sql, message);
+	} else {
+		pass(sql, type_name);
 	}
 	duckdb_destroy_result(&result);
 }
@@ -94,6 +164,8 @@ int main(int argc, char **argv) {
 		return 2;
 	}
 	const char *version = argv[1], *dir = argv[2], *endpoint = argv[3];
+	// Line-buffered, so a crash still shows the checks before it
+	setvbuf(stdout, NULL, _IOLBF, 0);
 
 #ifdef SMOKE_REGISTER
 	if (duckdb_register_static_extensions() != 0) {
@@ -101,9 +173,7 @@ int main(int argc, char **argv) {
 		return 1;
 	}
 #endif
-	duckdb_database db;
-	if (duckdb_open(NULL, &db) != DuckDBSuccess || duckdb_connect(db, &con) != DuckDBSuccess) {
-		fprintf(stderr, "could not open an in-memory database\n");
+	if (!open_database(NULL)) {
 		return 1;
 	}
 
@@ -156,13 +226,16 @@ int main(int argc, char **argv) {
 	expect_error(NO_LOADABLE, "INSTALL tpch");
 	expect_error(NO_LOADABLE, "LOAD tpch");
 #endif
+	close_database();
 
-	duckdb_disconnect(&con);
-	duckdb_close(&db);
 	if (failures) {
-		printf("%d check(s) failed\n", failures);
+		printf("%d of %d checks failed\n", failures, passes + failures);
 		return 1;
 	}
-	printf("all checks passed\n");
+	if (!passes) {
+		printf("no checks ran\n");
+		return 1;
+	}
+	printf("%d checks passed\n", passes);
 	return 0;
 }

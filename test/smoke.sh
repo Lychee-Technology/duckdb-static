@@ -6,9 +6,10 @@
 #
 # Builds the program three ways (see test/smoke.c): registering the extensions
 # with a call, registering them with a link flag, and not registering them,
-# which must leave them missing. The httpfs checks read from a local HTTP
-# server, so the test needs no network access. CC defaults to cc; on Amazon
-# Linux 2023 set it to the gcc14 the bundle was built with.
+# which must leave them missing. Each binary starts with an empty data
+# directory and must report how many checks passed. The httpfs checks read from
+# a local HTTP server, so the test needs no network access. CC defaults to cc;
+# on Amazon Linux 2023 set it to the gcc14 the bundle was built with.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -102,9 +103,16 @@ build smoke-unlinked -DSMOKE_UNLINKED
 status=0
 for name in smoke-register smoke-linkflag smoke-unlinked; do
 	echo "== $name"
-	rm -rf "$work/data/bucket"/*
+	rm -rf "$work/data"
+	mkdir -p "$work/data/bucket"
 	: >"$work/requests.log"
-	if ! "$work/$name" "$version" "$work/data" "$endpoint"; then
+	if ! "$work/$name" "$version" "$work/data" "$endpoint" | tee "$work/$name.log"; then
+		status=1
+		continue
+	fi
+	# Guards against a binary that exits 0 without running its checks.
+	if ! tail -n1 "$work/$name.log" | grep -Eq '^[1-9][0-9]* checks passed$'; then
+		echo "FAIL $name did not report any passed checks"
 		status=1
 		continue
 	fi
