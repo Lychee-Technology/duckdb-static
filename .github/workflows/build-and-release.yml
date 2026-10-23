@@ -177,7 +177,7 @@ jobs:
 
     steps:
       - name: Install tools
-        run: dnf install -y gcc14 gcc14-c++ libcurl-devel openssl-devel binutils findutils tar xz python3
+        run: dnf install -y git gcc14 gcc14-c++ libcurl-devel openssl-devel binutils findutils tar xz python3
 
       - name: Checkout repository
         uses: actions/checkout@v6
