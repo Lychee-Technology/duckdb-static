@@ -1,6 +1,6 @@
 # Parquet fixtures
 
-Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set; see the main README's [Building and testing](../../README.md#building-and-testing).
+Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set; see [`test/README.md`](../README.md).
 
 | Path | What it is |
 |---|---|
