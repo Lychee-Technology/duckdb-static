@@ -12,6 +12,11 @@ Parameters:
     AllowedValues:
       - arm64
       - x86_64
+  FixtureUrl:
+    Type: String
+    Description: >
+      The URL of v2/tiny.parquet on the fixture server run.sh starts, as the
+      Lambda containers on its Docker network reach it.
 
 Globals:
   Function:
@@ -21,6 +26,9 @@ Globals:
     MemorySize: 512
     Architectures:
       - !Ref Architecture
+    Environment:
+      Variables:
+        BENCH_FIXTURE_URL: !Ref FixtureUrl
 
 Resources:
   Stock:

@@ -1,7 +1,9 @@
 # Runs example/bench/run.sh on native arm64 and x86_64 runners: DuckDB
-# readiness and a first local Parquet query, with duckdb-go's stock library and
-# with a bundle, under sam local invoke on provided.al2023. example/bench/
-# README.md says what it measures. Nothing waits for it.
+# readiness and a first Parquet query over HTTP from a local fixture server,
+# with duckdb-go's stock library and with a bundle, under sam local invoke on
+# provided.al2023. run.sh starts the server and its Docker network and removes
+# both when it exits. example/bench/README.md says what it measures. Nothing
+# waits for it.
 #
 # build-and-release.yml calls it for the bundles it just built. A dispatch
 # benchmarks the bundles of an earlier build run instead, while its artifacts

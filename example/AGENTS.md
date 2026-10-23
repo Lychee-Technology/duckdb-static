@@ -52,9 +52,11 @@ The job pulls three images with no retries. From ECR Public it pulls `amazonlinu
 
 ## Benchmark
 
-`bench/` times DuckDB's readiness in a Lambda process, with the bundle and with `duckdb-go`'s stock library. `bench/README.md` has what it measures and how to run it. It is a second main package in this module so that both variants always build with the `duckdb-go` in this `go.mod`, but it has its own Dockerfile, template and scripts and changes nothing the example builds. Because it lives under `example/`, a PR that changes it also runs `example.yml`.
+`bench/` times DuckDB's readiness and a first Parquet query over HTTP in a Lambda process, with the bundle and with `duckdb-go`'s stock library. `bench/README.md` has what it measures and how to run it. It is a second main package in this module so that both variants always build with the `duckdb-go` in this `go.mod`, but it has its own Dockerfile, template and scripts and changes nothing the example builds. Because it lives under `example/`, a PR that changes it also runs `example.yml`.
 
 When `go.mod` and `duckdb_version` name different DuckDB versions, the stock variant's DuckDB differs from the bundle's, and the benchmark reports `incomparable` until `go.mod` is bumped. Its stock `httpfs` comes from `extensions.duckdb.org` for the version in `duckdb_version`, so a DuckDB release that DuckDB hasn't published `httpfs` for is `incomparable` too.
+
+The query reads `test/fixtures/public/v2/tiny.parquet` from `test/fixtures/serve.py`, which `run.sh` runs in an `amazonlinux:2023` container on a Docker network of the run's own; `sam local invoke --docker-network` puts the Lambda containers on it, and they reach the server as `http://fixtures:8080`. The expected `sum(id)`, `720600`, is in `v2/manifest.json` and in `expectedSum` in `bench/main.go`, and `bench/test_summarize.py` checks that the two agree. A run with Podman needs the `docker` command and SAM's API socket to reach the same user's Podman, so the network `run.sh` creates is the one SAM attaches to.
 
 ## Podman
 

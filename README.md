@@ -92,7 +92,7 @@ Three jobs run alongside the release, and the release waits for none of them:
 
 - `example` builds and invokes the Go Lambda. A DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
 - `httpfs-remote` runs the fixture queries over HTTPS. It stays a separate signal until the fixture hosting has proven reliable; see below.
-- `benchmark` times DuckDB's readiness and a first local Parquet query with the bundle and with `duckdb-go`'s stock library, under SAM. It measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).
+- `benchmark` times DuckDB's readiness and a first Parquet query over HTTP, against a local fixture server, with the bundle and with `duckdb-go`'s stock library, under SAM. It measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).
 
 A dispatch on a tag that already has a release, including a draft, fails in the release job and leaves the release as it is. To replace its assets, dispatch with `overwrite-release`:
 

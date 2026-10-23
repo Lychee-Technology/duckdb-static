@@ -1,6 +1,7 @@
 // Command duckdb-bench measures, inside a fresh Lambda process, how long DuckDB
 // takes to open a database and connect, make the bundled extensions ready, and
-// run a first query on a local Parquet file. run.sh builds it twice, against
+// run a first query on a small Parquet file over HTTP, from the fixture server
+// run.sh starts next to the Lambda containers. run.sh builds it twice, against
 // the stock duckdb-go library and against this repository's bundle, and
 // README.md says what each number covers.
 package main
@@ -19,11 +20,9 @@ import "C"
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -40,14 +39,18 @@ import (
 var extensions = []string{"core_functions", "parquet", "json", "icu", "httpfs"}
 
 const (
-	fixture     = "data/multi_row_group.parquet"
-	expectedSum = 1249975000 // test/fixtures/v1.queries.sql
+	// sum(id) of test/fixtures/public/v2/tiny.parquet, which the benchmark
+	// reads from BENCH_FIXTURE_URL (test/fixtures/v2.queries.sql).
+	expectedSum = 720600
+	// sum(id) of v1/multi_row_group.parquet, which mode "remote" reads over
+	// HTTPS (test/fixtures/v1.queries.sql).
+	remoteExpectedSum = 1249975000
 )
 
 type event struct {
 	// "bench" (the default) or "remote".
 	Mode string `json:"mode"`
-	// For "remote": a URL of multi_row_group.parquet to query, untimed.
+	// For "remote": a URL of v1/multi_row_group.parquet to query, untimed.
 	URL string `json:"url"`
 }
 
@@ -56,6 +59,7 @@ type extensionState struct {
 	Loaded      bool   `json:"loaded"`
 	Installed   bool   `json:"installed"`
 	InstallMode string `json:"install_mode"`
+	InstallPath string `json:"install_path"`
 }
 
 type result struct {
@@ -71,9 +75,13 @@ type result struct {
 	// Primary, mode "bench" only.
 	OpenOrConnectMs  *float64 `json:"duckdb_open_or_connect_ms,omitempty"`
 	ExtensionReadyMs *float64 `json:"extension_ready_ms,omitempty"`
-	FirstQueryMs     *float64 `json:"first_local_parquet_query_ms,omitempty"`
-	TotalMs          *float64 `json:"duckdb_ready_and_first_local_query_ms,omitempty"`
+	FirstQueryMs     *float64 `json:"first_http_parquet_query_ms,omitempty"`
+	TotalMs          *float64 `json:"duckdb_ready_and_first_http_query_ms,omitempty"`
 
+	// The URL the query read. In mode "bench" it is BENCH_FIXTURE_URL with
+	// this process's instance ID added as the query parameter "instance", so
+	// that the fixture server's log tells which sample made each request.
+	URL      string `json:"url"`
 	Result   *int64 `json:"result"`
 	ResultOK bool   `json:"result_ok"`
 	Error    string `json:"error"`
@@ -84,8 +92,6 @@ type result struct {
 	Platform        string            `json:"platform"`
 	Extensions      []extensionState  `json:"extensions"`
 	Settings        map[string]string `json:"settings"`
-	FixtureSHA256   string            `json:"fixture_sha256,omitempty"`
-	FixtureBytes    int64             `json:"fixture_bytes,omitempty"`
 	ExecutableBytes int64             `json:"executable_bytes"`
 }
 
@@ -197,21 +203,41 @@ func load(ctx context.Context, conn *sql.Conn) error {
 	return nil
 }
 
-func querySum(ctx context.Context, conn *sql.Conn, path string, r *result) error {
+// querySum reads every value of the id column from src and checks the sum.
+func querySum(ctx context.Context, conn *sql.Conn, src string, expected int64, r *result) error {
 	var sum int64
-	query := fmt.Sprintf("SELECT sum(id) FROM read_parquet('%s')", strings.ReplaceAll(path, "'", "''"))
+	query := fmt.Sprintf("SELECT sum(id) FROM read_parquet('%s')", strings.ReplaceAll(src, "'", "''"))
 	if err := conn.QueryRowContext(ctx, query).Scan(&sum); err != nil {
 		return fmt.Errorf("query: %w", err)
 	}
 	r.Result = &sum
-	r.ResultOK = sum == expectedSum
+	r.ResultOK = sum == expected
 	return nil
 }
 
+// sampleURL adds the process's instance ID to the fixture's URL.
+func sampleURL(base, instanceID string) (string, error) {
+	u, err := url.Parse(base)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", fmt.Errorf("BENCH_FIXTURE_URL %q isn't an http:// or https:// URL", base)
+	}
+	q := u.Query()
+	q.Set("instance", instanceID)
+	u.RawQuery = q.Encode()
+	return u.String(), nil
+}
+
 // bench times sql.Open's work, the first connection, the LOADs and the first
-// query separately. sql.Open would open the database at once but connect
-// lazily, so it calls the connector and the connection explicitly.
+// query, including reading and checking its result, separately. sql.Open
+// would open the database at once but connect lazily, so it calls the
+// connector and the connection explicitly. The URL is worked out before the
+// clock starts.
 func bench(ctx context.Context, r *result) error {
+	src, err := sampleURL(os.Getenv("BENCH_FIXTURE_URL"), r.InstanceID)
+	if err != nil {
+		return err
+	}
+	r.URL = src
 	start := time.Now()
 	db, conn, err := open(ctx)
 	if err != nil {
@@ -224,8 +250,7 @@ func bench(ctx context.Context, r *result) error {
 		return err
 	}
 	loaded := time.Now()
-	path := filepath.Join(taskRoot(), fixture)
-	if err := querySum(ctx, conn, path, r); err != nil {
+	if err := querySum(ctx, conn, src, expectedSum, r); err != nil {
 		return err
 	}
 	done := time.Now()
@@ -235,15 +260,7 @@ func bench(ctx context.Context, r *result) error {
 	r.FirstQueryMs = ms(done.Sub(loaded))
 	r.TotalMs = ms(done.Sub(start))
 
-	if err := describe(ctx, conn, r); err != nil {
-		return err
-	}
-	sum, size, err := hashFile(path)
-	if err != nil {
-		return err
-	}
-	r.FixtureSHA256, r.FixtureBytes = sum, size
-	return nil
+	return describe(ctx, conn, r)
 }
 
 // remote checks that httpfs reads the fixture from src. It is a functional
@@ -252,6 +269,7 @@ func remote(ctx context.Context, r *result, src string) error {
 	if src == "" {
 		return fmt.Errorf("mode remote needs a url")
 	}
+	r.URL = src
 	db, conn, err := open(ctx)
 	if err != nil {
 		return err
@@ -261,7 +279,7 @@ func remote(ctx context.Context, r *result, src string) error {
 	if err := load(ctx, conn); err != nil {
 		return err
 	}
-	if err := querySum(ctx, conn, src, r); err != nil {
+	if err := querySum(ctx, conn, src, remoteExpectedSum, r); err != nil {
 		return err
 	}
 	return describe(ctx, conn, r)
@@ -280,7 +298,8 @@ func describe(ctx context.Context, conn *sql.Conn, r *result) error {
 	for i, name := range extensions {
 		names[i] = "'" + name + "'"
 	}
-	rows, err := conn.QueryContext(ctx, `SELECT extension_name, loaded, installed, coalesce(install_mode::VARCHAR, '')
+	rows, err := conn.QueryContext(ctx, `SELECT extension_name, loaded, installed,
+			coalesce(install_mode::VARCHAR, ''), coalesce(install_path, '')
 		FROM duckdb_extensions() WHERE extension_name IN (`+strings.Join(names, ", ")+`) ORDER BY extension_name`)
 	if err != nil {
 		return fmt.Errorf("extensions: %w", err)
@@ -288,7 +307,7 @@ func describe(ctx context.Context, conn *sql.Conn, r *result) error {
 	defer rows.Close()
 	for rows.Next() {
 		var e extensionState
-		if err := rows.Scan(&e.Name, &e.Loaded, &e.Installed, &e.InstallMode); err != nil {
+		if err := rows.Scan(&e.Name, &e.Loaded, &e.Installed, &e.InstallMode, &e.InstallPath); err != nil {
 			return fmt.Errorf("extensions: %w", err)
 		}
 		r.Extensions = append(r.Extensions, e)
@@ -306,18 +325,4 @@ func describe(ctx context.Context, conn *sql.Conn, r *result) error {
 		r.Settings[name] = v
 	}
 	return nil
-}
-
-func hashFile(path string) (string, int64, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", 0, err
-	}
-	defer f.Close()
-	h := sha256.New()
-	n, err := io.Copy(h, f)
-	if err != nil {
-		return "", 0, err
-	}
-	return hex.EncodeToString(h.Sum(nil)), n, nil
 }
