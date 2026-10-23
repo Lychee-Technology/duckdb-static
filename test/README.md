@@ -26,9 +26,9 @@ Nothing tests S3 over TLS or against AWS, virtual-hosted-style S3 URLs, a deploy
 
 | Trigger | What runs | On which bundle |
 |---|---|---|
-| A PR, or a push to `main`, that changes `example/` or `example.yml` | `example.yml` | The latest published release. If its DuckDB version differs from `duckdb_version`, the job skips the commands and still passes, with a `Skipped:` notice. |
-| A PR, or a push to `main`, that changes `test/fixtures/` or `fixtures.yml` | `fixtures.yml` | None |
-| Any other PR, including one that changes `test/smoke.*`, `scripts/`, `duckdb_version` or `build-and-release.yml` | Nothing | None. Dispatch the build on the branch. Whether PRs should test a bundle is [#26](https://github.com/Lychee-Technology/duckdb-static/issues/26). |
+| A PR, or a push to `main`, that changes `example/` or `example.yml`; or a `workflow_dispatch` of `example.yml` on any ref | `example.yml` | The latest published release, whatever ref the run is on. If its DuckDB version differs from the ref's `duckdb_version`, the job skips the commands and still passes, with a `Skipped:` notice. A dispatch on a tag tests that tag's assets only while it is the latest release. |
+| A PR, or a push to `main`, that changes `test/fixtures/` or `fixtures.yml`; or a `workflow_dispatch` of `fixtures.yml` on any ref | `fixtures.yml` | None |
+| Any other PR or push to `main`, including one that changes `test/smoke.*`, `scripts/`, `duckdb_version` or `build-and-release.yml` | Nothing | None. Dispatch the build on the branch. Whether PRs should test a bundle is [#26](https://github.com/Lychee-Technology/duckdb-static/issues/26). |
 | `workflow_dispatch` of `build-and-release.yml` on a branch | The build and smoke test on each architecture, then `example` and `httpfs-remote` | The tarballs this run built. They are kept as artifacts for one day, and nothing is released. |
 | A pushed `v*` tag, or a dispatch on one | The same jobs, plus `release` | The tarballs this run built. `release` publishes them only if both build jobs passed, after checking each against the sha256 its build recorded after the smoke test. |
 
@@ -40,7 +40,7 @@ None of these states is a pass:
 - `smoke.sh`'s summary says `remote: not configured`: nothing was read over HTTPS.
 - `example` passes with a `Skipped:` notice: it ran none of the README's commands.
 - A fixture run prints `stop the host failed, so the remaining fixture checks are skipped`: the checks after the first host or network failure didn't run.
-- A PR outside the paths above has no bundle check at all.
+- A PR or push to `main` outside the paths above has no bundle check at all.
 
 ## Running the tests
 
