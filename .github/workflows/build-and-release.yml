@@ -118,11 +118,24 @@ jobs:
         run: |
           test/smoke.sh libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz "$DUCKDB_VER"
 
+      # Identifies the tarball the smoke test just passed. The artifact carries
+      # the sha256 file, so a job that downloads the tarball can check that it
+      # has the same bytes.
+      - name: Record sha256
+        env:
+          TARBALL: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+        run: |
+          sha256sum "$TARBALL" > "$TARBALL.sha256"
+          cat "$TARBALL.sha256"
+          echo "Smoke-tested: \`$(cat "$TARBALL.sha256")\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: libduckdb-${{ matrix.arch }}-${{ matrix.flavor }}
-          path: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+          path: |
+            libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+            libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz.sha256
           retention-days: 1
 
   # Builds and invokes example/ against the bundles above. The release doesn't
@@ -160,10 +173,12 @@ jobs:
           echo "Files to be released:"
           ls -lh ./release/
 
+      # Only the tarballs: example/Makefile downloads the first asset whose name
+      # contains the tarball's, so it could pick a published .sha256 instead.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ./release/*
+          files: ./release/*.tar.xz
           body: |
             Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
 
