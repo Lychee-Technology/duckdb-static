@@ -4,12 +4,15 @@
 #
 # Usage: test/smoke.sh <libduckdb_bundle-*.tar.xz> <expected DuckDB version>
 #
-# Builds the program three ways (see test/smoke.c): registering the extensions
-# with a call, registering them with a link flag, and not registering them,
-# which must leave them missing. Each binary starts with an empty data
-# directory and must report how many checks passed. The httpfs checks read from
-# a local HTTP server, so the test needs no network access. CC defaults to cc;
-# on Amazon Linux 2023 set it to the gcc14 the bundle was built with.
+# Before building anything, it checks that the tarball holds exactly the archive
+# and its two headers, and that the archive is built for this host's
+# architecture. Then it builds the program three ways (see test/smoke.c):
+# registering the extensions with a call, registering them with a link flag,
+# and not registering them, which must leave them missing. Each binary starts
+# with an empty data directory and must report how many checks passed. The
+# httpfs checks read from a local HTTP server, so the test needs no network
+# access. CC defaults to cc; on Amazon Linux 2023 set it to the gcc14 the bundle
+# was built with.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -29,9 +32,43 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir -p "$work/bundle" "$work/data/bucket"
-tar -xJf "$tarball" -C "$work/bundle"
+if ! tar -xJf "$tarball" -C "$work/bundle"; then
+	echo "FAIL $tarball is not a readable .tar.xz"
+	exit 1
+fi
 echo "Tarball contents:"
 ls -l "$work/bundle"
+
+# The release tarball holds exactly the archive and the two public headers.
+# Anything else means scripts/package-bundle.sh packaged the wrong files.
+expected_files=$'duckdb.h\nduckdb_static_extension.h\nlibduckdb_bundle.a'
+files=$(find "$work/bundle" -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+if [ "$files" != "$expected_files" ]; then
+	echo "FAIL the tarball holds:"
+	sed 's/^/     /' <<<"$files"
+	echo "     expected exactly:"
+	sed 's/^/     /' <<<"$expected_files"
+	exit 1
+fi
+echo "ok   tarball holds exactly: ${expected_files//$'\n'/ }"
+
+# Every member of the archive must be built for this host's architecture. A
+# mismatch means the tarball is for the other architecture, or the build mixed
+# objects from two.
+case $(uname -m) in
+x86_64) machine='Advanced Micro Devices X86-64' ;;
+aarch64) machine=AArch64 ;;
+*)
+	echo "FAIL no expected archive machine type for a $(uname -m) host"
+	exit 1
+	;;
+esac
+machines=$(readelf -h "$work/bundle/libduckdb_bundle.a" | sed -n 's/^ *Machine: *//p' | sort -u | paste -sd, -) || true
+if [ "$machines" != "$machine" ]; then
+	echo "FAIL libduckdb_bundle.a is built for '${machines:-no ELF objects}', expected '$machine' on this $(uname -m) host"
+	exit 1
+fi
+echo "ok   libduckdb_bundle.a is built for $machine"
 
 # Serves data/ with byte ranges, which httpfs uses to read parquet, and logs
 # each request with its Authorization scheme.
