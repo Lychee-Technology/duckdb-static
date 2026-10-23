@@ -82,4 +82,4 @@ On Fedora with rootless Podman, point SAM at a Podman API socket with SELinux la
 gh workflow run benchmark.yml -f build-run-id=<run id> -f samples=30
 ```
 
-Shared runners are noisy, and nothing in a single run tells you how noisy. Compare runs before reading much into a difference of a few milliseconds.
+Shared runners are noisy, and nothing in a single run tells you how noisy. Compare runs before reading much into a difference of a few milliseconds. `ubuntu-latest` doesn't pin a CPU model either. Two runs of the same bundles, one on an Intel Xeon Platinum 8573C and one on an AMD EPYC 7763, differed by 7 ms in open and connect and by 20 ms in the stock total. So compare amd64 runs only when the runner line in their summaries shows the same CPU.
