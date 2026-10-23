@@ -142,7 +142,7 @@ How to read `httpfs-remote`:
 - **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
 - **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
 
-Making `httpfs-remote` required is a separate decision, recorded on an issue. It needs evidence that GitHub serves the fixtures reliably: the job's summaries from release and dispatch runs on both architectures, including how often they show host failures or `Rate-limited`. The change that makes it required has to:
+Making `httpfs-remote` required is a separate decision, to be recorded in [#28](https://github.com/Lychee-Technology/duckdb-static/issues/28). It needs evidence that GitHub serves the fixtures reliably: the job's summaries from release and dispatch runs on both architectures, including how often they show host failures or `Rate-limited`. The change that makes it required has to:
 
 - add `httpfs-remote` to the release job's `needs`;
 - make the job fail, not skip, when the variable is unset. A job that needs a skipped job is skipped too, so an unset variable would skip the release with no error saying why;
