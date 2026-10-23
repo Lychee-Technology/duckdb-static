@@ -28,8 +28,9 @@ Nothing tests S3 over TLS or against AWS, virtual-hosted-style S3 URLs, a deploy
 |---|---|---|
 | A PR, or a push to `main`, that changes `example/` or `example.yml`; or a `workflow_dispatch` of `example.yml` on any ref | `example.yml` | The latest published release, whatever ref the run is on. If its DuckDB version differs from the ref's `duckdb_version`, the job skips the commands and still passes, with a `Skipped:` notice. A dispatch on a tag tests that tag's assets only while it is the latest release. |
 | A PR, or a push to `main`, that changes `test/fixtures/` or `fixtures.yml`; or a `workflow_dispatch` of `fixtures.yml` on any ref | `fixtures.yml` | None |
-| Any other PR or push to `main`, including one that changes `test/smoke.*`, `scripts/`, `duckdb_version` or `build-and-release.yml` | Nothing | None. Dispatch the build on the branch. Whether PRs should test a bundle is [#26](https://github.com/Lychee-Technology/duckdb-static/issues/26). |
-| `workflow_dispatch` of `build-and-release.yml` on a branch | The build and smoke test on each architecture, then `example` and `httpfs-remote` | The tarballs this run built. They are kept as artifacts for one day, and nothing is released. |
+| A PR that changes `duckdb_version`, `scripts/`, `test/` or `build-and-release.yml`, in a file that isn't Markdown | The build and smoke test on each architecture, then `example` and `httpfs-remote` | The tarballs this run built from the PR merged into its base. They are kept as artifacts for one day, and nothing is released. A new push to the PR cancels its earlier run. A PR from a fork runs only after a maintainer approves it. |
+| Any other PR or push to `main`, including a push that changes the paths in the row above and a PR that changes only Markdown in them | Nothing | None. Dispatch the build on the branch. |
+| `workflow_dispatch` of `build-and-release.yml` on a branch | The same jobs as a PR | The tarballs this run built. They are kept as artifacts for one day, and nothing is released. |
 | A pushed `v*` tag, or a dispatch on one | The same jobs, plus `release` | The tarballs this run built. `release` publishes them only if both build jobs passed, after checking each against the sha256 its build recorded after the smoke test. |
 
 The build job on each architecture, smoke test included, is the only gate: a release needs every check in the rows marked "yes" above to pass on both architectures. `example` and `httpfs-remote` are separate signals. The main README's [Releasing](../README.md#releasing) has the policy, the guard against overwriting a release, how to read `httpfs-remote`, and what making it required involves.
@@ -41,6 +42,7 @@ None of these states is a pass:
 - `example` passes with a `Skipped:` notice: it ran none of the README's commands.
 - A fixture run prints `stop the host failed, so the remaining fixture checks are skipped`: the checks after the first host or network failure didn't run.
 - A PR or push to `main` outside the paths above has no bundle check at all.
+- A PR's build run shows as cancelled: a newer push to the PR replaced it, and the newer run is the one to read.
 
 ## Running the tests
 
@@ -72,7 +74,7 @@ local:  passed
 remote: not configured: DUCKDB_TEST_HTTPFS_BASE_URL is unset, so nothing was read over HTTPS
 ```
 
-To test the fixtures themselves, see [Generating and checking](fixtures/README.md#generating-and-checking). To build and invoke the Lambda example against a tarball you have, set `BUNDLE_TARBALL` as described in [`example/README.md`](../example/README.md). To test the architecture your machine doesn't have, dispatch the build on your branch with `gh workflow run build-and-release.yml --ref <branch>`; it takes about half an hour.
+To test the fixtures themselves, see [Generating and checking](fixtures/README.md#generating-and-checking). To build and invoke the Lambda example against a tarball you have, set `BUNDLE_TARBALL` as described in [`example/README.md`](../example/README.md). To test the architecture your machine doesn't have, open a PR that changes one of the build's paths, or dispatch the build on your branch with `gh workflow run build-and-release.yml --ref <branch>`; either takes about half an hour.
 
 ### Real HTTPS
 
