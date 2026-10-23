@@ -203,10 +203,21 @@ jobs:
         run: |
           # A branch name in place of the commit would follow new pushes, which
           # GitHub serves from a five-minute cache. See test/fixtures/README.md.
+          # http://, capitals, a port, a trailing dot, raw.github.com and
+          # github.com/<owner>/<repo>/raw/ all reach the same files, so any URL
+          # on a GitHub host must be the canonical one. It is also the only
+          # prefix test/smoke.c sends the token to.
+          url=$DUCKDB_TEST_HTTPFS_BASE_URL
+          host=${url,,}
+          host=${host#*://}
+          host=${host%%[/?#]*}
+          host=${host##*@}
+          host=${host%:*}
+          host=${host%.}
+          github='(^|\.)(github\.com|githubusercontent\.com)$'
           pinned='^https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/'
-          if [[ $DUCKDB_TEST_HTTPFS_BASE_URL == https://raw.githubusercontent.com/* &&
-            ! $DUCKDB_TEST_HTTPFS_BASE_URL =~ $pinned ]]; then
-            echo "::error title=Unpinned base URL::DUCKDB_TEST_HTTPFS_BASE_URL must name a full commit SHA, not a branch or tag: $DUCKDB_TEST_HTTPFS_BASE_URL"
+          if [[ $host =~ $github && ! $url =~ $pinned ]]; then
+            echo "::error title=Unpinned base URL::DUCKDB_TEST_HTTPFS_BASE_URL on GitHub must be https://raw.githubusercontent.com/<owner>/<repo>/<full commit SHA>/..., not a branch, a tag or another spelling: $url"
             exit 1
           fi
 
