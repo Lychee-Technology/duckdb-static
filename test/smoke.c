@@ -9,13 +9,21 @@
 //   -DSMOKE_UNLINKED   neither: expects the extensions to be missing, which
 //                      shows that the registration, not a download, provides them
 //
-// Usage: smoke <expected version> <data dir> <host:port of test/smoke.sh's server>
+// Usage: smoke <expected version> <data dir> <host:port of test/smoke.sh's server> <fixtures dir>
+//        smoke <expected version> --remote <base URL> <fixtures dir>
 // The server serves <data dir>, so a file written there can be read back over
-// HTTP and, under bucket/, over S3. <data dir> must start empty: the database
-// file goes there too, and the checks expect it not to exist yet.
+// HTTP and, under bucket/, over S3, and serves <fixtures dir>, which is
+// test/fixtures/public, under public/. <data dir> must start empty: the
+// database file goes there too, and the checks expect it not to exist yet.
 //
-// Prints one line per check and ends with "<n> checks passed". It fails if any
-// check failed or if none ran.
+// The registered builds run the queries in the fixtures' manifest.json against
+// the server (check_fixtures). With --remote, they run only those, against
+// <base URL>, a public HTTPS host serving the same files.
+//
+// Prints one line per check and ends with "<n> checks passed". It exits 0 if
+// every check passed and at least one ran, 3 if every failed check failed in
+// the network or with an HTTP error status, which points at the host rather
+// than the bundle, and 1 otherwise.
 #include "duckdb.h"
 // The tarball's other header. Nothing else compiles it, and no shipped header
 // declares duckdb_register_static_extensions, so it is declared below.
@@ -36,18 +44,100 @@ int32_t duckdb_register_static_extensions(void);
 // in a build without loadable-extension support.
 #define NO_LOADABLE "this build does not link the loadable_extensions library"
 
+// The fixture version the fixture checks read.
+#define FIXTURES "v1"
+// The URLs that get GITHUB_TOKEN in --remote mode. The prefix is fixed rather
+// than taken from the base URL, so a mistyped base URL never receives the token.
+#define REMOTE_SCOPE "https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/"
+
 static duckdb_database db;
 static duckdb_connection con;
-static int passes, failures;
+// host_failures counts the failures that host_layer() puts in the network or
+// on the HTTP server.
+static int passes, failures, host_failures;
+// The bearer token of the fixtures' secret. No output shows it.
+static const char *token;
+
+// Prints text with the token replaced, even where an error quotes the statement
+// that holds it.
+static void print_redacted(const char *text) {
+	size_t length = token ? strlen(token) : 0;
+	const char *found;
+	while (length && (found = strstr(text, token))) {
+		printf("%.*s<redacted>", (int)(found - text), text);
+		text = found + length;
+	}
+	fputs(text, stdout);
+}
 
 static void pass(const char *sql, const char *outcome) {
-	printf("ok   %s -> %s\n", sql, outcome);
+	fputs("ok   ", stdout);
+	print_redacted(sql);
+	fputs(" -> ", stdout);
+	print_redacted(outcome);
+	putchar('\n');
 	passes++;
 }
 
 static void fail(const char *sql, const char *message) {
-	printf("FAIL %s\n     %s\n", sql, message);
+	fputs("FAIL ", stdout);
+	print_redacted(sql);
+	fputs("\n     ", stdout);
+	print_redacted(message);
+	putchar('\n');
 	failures++;
+}
+
+// Returns the status in an HTTP error's message, "(HTTP 404 Not Found)" or
+// "returned HTTP 429", or 0 if there is none.
+static int http_status(const char *message) {
+	for (const char *at = strstr(message, "HTTP "); at; at = strstr(at + 1, "HTTP ")) {
+		int status, end = 0;
+		if (sscanf(at, "HTTP %3d%n", &status, &end) == 1 && end == 8) {
+			return status;
+		}
+	}
+	return 0;
+}
+
+// Names the layer a failed query's error comes from when it is the network or
+// the HTTP server, or returns NULL when the error points at the bundle. httpfs
+// raises an HTTP error status as DUCKDB_ERROR_HTTP, and a transport failure as
+// DUCKDB_ERROR_IO with libcurl's description and "error for HTTP". The message
+// only picks the label: the error type decides whether it is the host's.
+static const char *host_layer(duckdb_result *result, char *label, size_t size) {
+	const char *message = duckdb_result_error(result);
+	if (duckdb_result_error_type(result) == DUCKDB_ERROR_HTTP) {
+		int status = http_status(message);
+		if (status) {
+			snprintf(label, size, "host: HTTP %d%s", status, status == 429 ? ", rate-limited" : "");
+		} else {
+			// httpfs's error for a host that answers a ranged GET with the whole file
+			snprintf(label, size, "host: %s", strstr(message, "range") ? "byte ranges" : "HTTP");
+		}
+	} else if (duckdb_result_error_type(result) == DUCKDB_ERROR_IO && strstr(message, " error for HTTP ")) {
+		const char *layer = strstr(message, "resolve")   ? "DNS"
+		                    : strstr(message, "SSL")     ? "TLS"
+		                    : strstr(message, "Timeout") ? "timeout"
+		                                                 : "connection";
+		snprintf(label, size, "network: %s", layer);
+	} else {
+		return NULL;
+	}
+	return label;
+}
+
+// Fails a check whose query returned an unexpected error, labeled with its
+// layer when that is the network or the HTTP server.
+static void fail_error(const char *sql, duckdb_result *result, const char *expectation) {
+	char label[64], message[2200];
+	const char *layer = host_layer(result, label, sizeof(label));
+	snprintf(message, sizeof(message), "%s%s%s%s%s", layer ? "[" : "", layer ? layer : "", layer ? "] " : "",
+	         expectation, duckdb_result_error(result));
+	fail(sql, message);
+	if (layer) {
+		host_failures++;
+	}
 }
 
 // Opens the database file at path, or an in-memory database when path is NULL,
@@ -90,7 +180,7 @@ __attribute__((format(printf, 2, 3))) static void expect(const char *expected, c
 
 	duckdb_result result;
 	if (duckdb_query(con, sql, &result) != DuckDBSuccess) {
-		fail(sql, duckdb_result_error(&result));
+		fail_error(sql, &result, "");
 	} else if (duckdb_row_count(&result) == 0 || duckdb_column_count(&result) == 0) {
 		fail(sql, "no result");
 	} else {
@@ -153,10 +243,10 @@ __attribute__((format(printf, 3, 4), unused)) static void check_error_type(duckd
 	if (duckdb_query(con, sql, &result) == DuckDBSuccess) {
 		fail(sql, "succeeded, expected an error");
 	} else if (duckdb_result_error_type(&result) != type) {
-		char message[2048];
-		snprintf(message, sizeof(message), "expected %s (%d), got error type %d: %s", type_name, (int)type,
-		         (int)duckdb_result_error_type(&result), duckdb_result_error(&result));
-		fail(sql, message);
+		char expectation[128];
+		snprintf(expectation, sizeof(expectation), "expected %s (%d), got error type %d: ", type_name, (int)type,
+		         (int)duckdb_result_error_type(&result));
+		fail_error(sql, &result, expectation);
 	} else {
 		pass(sql, type_name);
 	}
@@ -335,14 +425,216 @@ static void check_reopen(const char *path) {
 	expect("(100000, 4999950000, 80000)", "SELECT (count(*), sum(i), count(s))::VARCHAR FROM big");
 	close_database();
 }
+
+// Returns the first value of the query's result, to free with duckdb_free. If
+// the query fails or returns no value, it fails a check and returns NULL.
+__attribute__((format(printf, 1, 2))) static char *value_of(const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	const char *sql = format_sql(format, args);
+	va_end(args);
+
+	duckdb_result result;
+	char *value = NULL;
+	if (duckdb_query(con, sql, &result) != DuckDBSuccess) {
+		fail_error(sql, &result, "");
+	} else if (duckdb_row_count(&result) == 0 || duckdb_column_count(&result) == 0 ||
+	           duckdb_value_is_null(&result, 0, 0)) {
+		fail(sql, "no value");
+	} else {
+		value = duckdb_value_varchar(&result, 0, 0);
+	}
+	duckdb_destroy_result(&result);
+	return value;
+}
+
+// Checks that the query fails with an HTTP error of the given status. A type
+// check alone isn't enough, because a rate-limited host's 429 is an HTTP error
+// too.
+__attribute__((format(printf, 2, 3))) static void expect_http_error(int status, const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	const char *sql = format_sql(format, args);
+	va_end(args);
+
+	duckdb_result result;
+	char expectation[64];
+	snprintf(expectation, sizeof(expectation), "HTTP %d", status);
+	if (duckdb_query(con, sql, &result) == DuckDBSuccess) {
+		fail(sql, "succeeded, expected an HTTP error");
+	} else if (duckdb_result_error_type(&result) == DUCKDB_ERROR_HTTP &&
+	           http_status(duckdb_result_error(&result)) == status) {
+		pass(sql, expectation);
+	} else {
+		strcat(expectation, " expected, got: ");
+		fail_error(sql, &result, expectation);
+	}
+	duckdb_destroy_result(&result);
+}
+
+// Returns whether the host failed a check since host_failures was before. The
+// fixture checks stop then: the rest would fail the same way and only add
+// requests to a host that may be rate-limiting them.
+static bool host_failed(int before) {
+	static bool said;
+	if (host_failures > before && !said) {
+		printf("stop the host failed, so the remaining fixture checks are skipped\n");
+		said = true;
+	}
+	return host_failures > before;
+}
+
+// The requests httpfs made, from DuckDB's HTTP log
+#define HTTP_LOG "duckdb_logs_parsed('HTTP')"
+// The byte range of each successful ranged GET in the HTTP log
+#define GET_RANGES                                                                                                     \
+	"(SELECT request.url AS url, regexp_extract(request.headers['Range'], 'bytes=(\\d+)-(\\d+)', ['first_byte', "      \
+	"'last_byte'])::STRUCT(first_byte BIGINT, last_byte BIGINT) AS r FROM " HTTP_LOG " "                               \
+	"WHERE request.type = 'GET' AND response.status = 'PartialContent_206')"
+
+static void report_requests(const char *when) {
+	char *summary = value_of("SELECT format('{} HTTP requests ({} HEAD, {} GET), {} bytes fetched', count(*), "
+	                         "count(*) FILTER (request.type = 'HEAD'), count(*) FILTER (request.type = 'GET'), "
+	                         "(SELECT coalesce(sum(r.last_byte - r.first_byte + 1), 0) FROM " GET_RANGES ")) "
+	                         "FROM " HTTP_LOG);
+	if (summary) {
+		printf("info %s %s\n", summary, when);
+	}
+	duckdb_free(summary);
+}
+
+// Runs the queries in the fixtures' manifest.json against <base>/v1 the way a
+// consumer reads remote Parquet, sending token to URLs under scope. smoke.sh
+// runs this against its local server, and against a public HTTPS host when one
+// is configured. Both serve the same files, so a failure on only the public
+// host points at the host or the network.
+static void check_fixtures(const char *base, const char *fixtures, const char *scope) {
+	const int before = host_failures;
+	char dir[1024], manifest[1024];
+	size_t length = strlen(base);
+	if (length && base[length - 1] == '/') {
+		length--;
+	}
+	snprintf(dir, sizeof(dir), "%.*s/" FIXTURES, (int)length, base);
+	snprintf(manifest, sizeof(manifest), "%s/" FIXTURES "/manifest.json", fixtures);
+
+	// Nothing may be installed or loaded on demand: the extensions come from
+	// the registration. Retries come only from httpfs's settings, never from
+	// re-running a query, so a wrong value can't be retried into a pass. On a
+	// 429 or 503 httpfs retries up to 5 more times and waits as long as
+	// Retry-After asks, up to 20 s. A host that ignores Range fails instead of
+	// being read whole. DuckDB fetches a remote file of up to one cache block,
+	// 2 MiB by default, in one request, so a smaller block makes the scans of
+	// multi_row_group.parquet fetch only the byte ranges they need, as they
+	// would in a larger file. The metadata cache saves a HEAD per query.
+	expect("0", "SET autoinstall_known_extensions = false; SET autoload_known_extensions = false; "
+	            "SET http_retries = 3; SET http_retry_wait_ms = 500; SET http_retry_backoff = 2; "
+	            "SET http_timeout = 30; SET auto_fallback_to_full_download = false; "
+	            "SET external_file_cache_remote_max_block_size = 262144; SET enable_http_metadata_cache = true; "
+	            "SET enable_logging = true; SET logging_level = 'DEBUG'; SET logging_mode = 'ENABLE_SELECTED'; "
+	            "SET enabled_log_types = 'HTTP'; SELECT count(*) FROM " HTTP_LOG);
+	if (token) {
+		expect("true", "CREATE SECRET fixtures (TYPE http, BEARER_TOKEN '%s', SCOPE '%s')", token, scope);
+	}
+
+	expect("34", "SELECT len(queries) FROM read_json('%s')", manifest);
+	char sql[4096];
+	snprintf(sql, sizeof(sql),
+	         "SELECT replace(replace(q.sql, '{dir}', '%s'), chr(10), ' '), q.expected "
+	         "FROM (SELECT unnest(queries) AS q FROM read_json('%s'))",
+	         dir, manifest);
+	duckdb_result queries;
+	if (duckdb_query(con, sql, &queries) != DuckDBSuccess) {
+		fail_error(sql, &queries, "");
+		duckdb_destroy_result(&queries);
+		return;
+	}
+	idx_t count = duckdb_row_count(&queries);
+	// Each expected value is the result cast to VARCHAR. The cast is in SQL,
+	// because duckdb_value_varchar returns NULL for a list.
+	for (idx_t i = 0; i < count && !host_failed(before); i++) {
+		char *query = duckdb_value_varchar(&queries, 0, i), *expected = duckdb_value_varchar(&queries, 1, i);
+		expect(expected, "SELECT (%s)::VARCHAR", query);
+		duckdb_free(query);
+		duckdb_free(expected);
+	}
+	if (host_failed(before)) {
+		duckdb_destroy_result(&queries);
+		return;
+	}
+
+	// Every GET asked for a byte range and got only that range.
+	expect("0", "SELECT count(*) FROM " HTTP_LOG " WHERE request.type = 'GET' "
+	            "AND (request.headers['Range'] IS NULL OR response.status = 'OK_200')");
+	report_requests("for the fixture queries");
+
+	// Repeated reads: the two queries that look up one id in
+	// multi_row_group.parquet run again with the external file cache off. They
+	// must fetch from the host again, and only part of the file, because each
+	// needs only the row group that holds its id. Clearing the log first counts
+	// their requests alone. Without the cache off, how much the first pass
+	// fetched depends on the cache, which doesn't reuse blocks of a file whose
+	// Last-Modified is less than 10 s old, such as a fresh checkout's.
+	expect("0", "SET enable_external_file_cache = false; SELECT count(*) FROM truncate_duckdb_logs()");
+	int repeated = 0;
+	for (idx_t i = 0; i < count && !host_failed(before); i++) {
+		char *query = duckdb_value_varchar(&queries, 0, i), *expected = duckdb_value_varchar(&queries, 1, i);
+		if (strstr(query, "multi_row_group.parquet') WHERE id = ")) {
+			expect(expected, "SELECT (%s)::VARCHAR", query);
+			repeated++;
+		}
+		duckdb_free(query);
+		duckdb_free(expected);
+	}
+	duckdb_destroy_result(&queries);
+	if (host_failed(before)) {
+		return;
+	}
+	if (repeated != 2) {
+		char message[128];
+		snprintf(message, sizeof(message), "found %d queries that look up one id, expected 2", repeated);
+		fail("repeated reads of multi_row_group.parquet", message);
+	}
+	expect("true",
+	       "SELECT count(*) > 0 AND sum(r.last_byte - r.first_byte + 1) < (SELECT f.size FROM "
+	       "(SELECT unnest(files) AS f FROM read_json('%s')) WHERE f.path = 'multi_row_group.parquet') "
+	       "FROM " GET_RANGES " WHERE url = '%s/multi_row_group.parquet'",
+	       manifest, dir);
+
+	char *absent = value_of("SELECT absent FROM read_json('%s')", manifest);
+	if (absent) {
+		expect_http_error(404, "SELECT * FROM read_parquet('%s/%s')", dir, absent);
+	}
+	duckdb_free(absent);
+	report_requests("for the repeated reads and the missing file");
+}
 #endif
 
+// Reports the checks and returns the exit status described at the top.
+static int finish(void) {
+	if (failures) {
+		printf("%d of %d checks failed, %d of them in the host or network\n", failures, passes + failures,
+		       host_failures);
+		return failures == host_failures ? 3 : 1;
+	}
+	if (!passes) {
+		printf("no checks ran\n");
+		return 1;
+	}
+	printf("%d checks passed\n", passes);
+	return 0;
+}
+
 int main(int argc, char **argv) {
-	if (argc != 4) {
-		fprintf(stderr, "Usage: %s <expected version> <data dir> <host:port>\n", argv[0]);
+	if (argc != 5) {
+		fprintf(stderr,
+		        "Usage: %s <expected version> <data dir> <host:port> <fixtures dir>\n"
+		        "       %s <expected version> --remote <base URL> <fixtures dir>\n",
+		        argv[0], argv[0]);
 		return 2;
 	}
-	const char *version = argv[1], *dir = argv[2], *endpoint = argv[3];
+	const char *version = argv[1], *dir = argv[2], *endpoint = argv[3], *fixtures = argv[4];
+	const bool remote = strcmp(dir, "--remote") == 0;
 	// Line-buffered, so a crash still shows the checks before it
 	setvbuf(stdout, NULL, _IOLBF, 0);
 
@@ -360,7 +652,11 @@ int main(int argc, char **argv) {
 	expect("42", "SELECT 42");
 
 #ifdef SMOKE_UNLINKED
-	(void)endpoint;
+	(void)endpoint, (void)fixtures;
+	if (remote) {
+		fprintf(stderr, "--remote needs a build that registers the extensions\n");
+		return 2;
+	}
 	expect("0", "SELECT count(*) FROM duckdb_extensions() WHERE loaded");
 	expect_error("core_functions", "SELECT to_minutes(5)");
 	// Nothing registered parquet, and the bundle can't load it from anywhere else.
@@ -368,6 +664,26 @@ int main(int argc, char **argv) {
 	expect_error("parquet", "COPY (SELECT 1 AS i) TO '%s/unlinked.parquet' (FORMAT parquet)", dir);
 	expect_error("json", "SELECT json_extract_string('{\"a\": 1}', '$.a')");
 #else
+	if (remote) {
+		// GITHUB_TOKEN goes into the secret's SQL, so it may hold only the
+		// characters GitHub's tokens have.
+		token = getenv("GITHUB_TOKEN");
+		if (token && !*token) {
+			token = NULL;
+		}
+		if (token && strspn(token, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_") != strlen(token)) {
+			token = NULL;
+			fail("GITHUB_TOKEN", "has a character other than a letter, a digit or '_', so it isn't used");
+			return finish();
+		}
+		printf("info GITHUB_TOKEN is %s\n",
+		       token ? "set: requests under " REMOTE_SCOPE " send it as a bearer token"
+		             : "not set: the fixtures are read without credentials");
+		check_fixtures(endpoint, fixtures, REMOTE_SCOPE);
+		close_database();
+		return finish();
+	}
+
 	expect("core_functions,httpfs,icu,json,parquet",
 	       "SELECT string_agg(extension_name, ',' ORDER BY extension_name) FROM duckdb_extensions() "
 	       "WHERE loaded AND install_mode = 'STATICALLY_LINKED'");
@@ -408,6 +724,16 @@ int main(int argc, char **argv) {
 	check_core();
 	check_json(dir);
 	check_parquet(dir);
+
+	// The fixture queries, with a token scoped to the server's copy of the
+	// fixtures. smoke.sh checks that every request for them sent the token and
+	// that the request outside the scope, below, didn't.
+	char base[1000], scope[1024];
+	snprintf(base, sizeof(base), "http://%s/public", endpoint);
+	snprintf(scope, sizeof(scope), "%s/", base);
+	token = "smoke-token";
+	check_fixtures(base, fixtures, scope);
+	expect_http_error(404, "SELECT * FROM read_parquet('http://%s/outside-scope.parquet')", endpoint);
 #endif
 	close_database();
 
@@ -417,14 +743,5 @@ int main(int argc, char **argv) {
 	check_reopen(path);
 #endif
 
-	if (failures) {
-		printf("%d of %d checks failed\n", failures, passes + failures);
-		return 1;
-	}
-	if (!passes) {
-		printf("no checks ran\n");
-		return 1;
-	}
-	printf("%d checks passed\n", passes);
-	return 0;
+	return finish();
 }
