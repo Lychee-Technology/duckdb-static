@@ -11,10 +11,12 @@ name: Benchmark
 on:
   workflow_call:
     inputs:
+      # A string, because a caller's number input can arrive as one. run.sh
+      # checks that it is a positive integer.
       samples:
         description: Samples per variant per architecture.
-        type: number
-        default: 30
+        type: string
+        default: '30'
   workflow_dispatch:
     inputs:
       build-run-id:

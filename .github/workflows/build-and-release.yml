@@ -187,7 +187,7 @@ jobs:
       contents: read
       actions: read
     with:
-      samples: ${{ inputs.benchmark-samples || 30 }}
+      samples: ${{ format('{0}', inputs.benchmark-samples || 30) }}
 
   # Runs the fixture queries over real HTTPS on the bundles above, in a fresh
   # Amazon Linux 2023 container, against the copy of test/fixtures/public at the
