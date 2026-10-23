@@ -132,14 +132,14 @@ A dispatch on a tag that already has a release, including a draft, fails in the 
 gh workflow run build-and-release.yml --ref <tag> -f overwrite-release=true
 ```
 
-Without the input, the dispatch still builds and tests the tag, so it can retest a release without changing it. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
+Without the input, the dispatch still builds and tests the tag before the release job fails, so it can retest a release without changing it. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
 
 #### The HTTPS check
 How to read `httpfs-remote`:
 
 - **Skipped:** `DUCKDB_TEST_HTTPFS_BASE_URL` was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
 - **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.
-- **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and every check the bundle got to run passed. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
+- **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
 - **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
 
 Making `httpfs-remote` required is a separate decision, recorded on an issue. It needs evidence that GitHub serves the fixtures reliably: the job's summaries from release and dispatch runs on both architectures, including how often they show host failures or `Rate-limited`. The change that makes it required has to:
