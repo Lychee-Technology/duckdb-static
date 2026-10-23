@@ -1,0 +1,36 @@
+# Temporary, for validating #17 before #18 adds the real job. Not for merging.
+name: tmp remote fixture check (#17)
+on:
+  push:
+    branches: [tmp-17-remote-check]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  remote:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {arch: arm64, runner: ubuntu-24.04-arm, platform: arm64-linux}
+          - {arch: amd64, runner: ubuntu-latest, platform: amd64-linux}
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: public.ecr.aws/amazonlinux/amazonlinux:2023
+    steps:
+      - run: dnf install -y --allowerasing tar xz git gcc14 openssl-devel libcurl-devel python3 binutils findutils
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
+        with:
+          name: libduckdb-${{ matrix.arch }}-httpfs-parquet
+          run-id: 39891898583
+          github-token: ${{ github.token }}
+      - name: Smoke test with the remote fixture run
+        env:
+          CC: /usr/bin/gcc14-gcc
+          DUCKDB_TEST_HTTPFS_BASE_URL: https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/4c60a8658e308eb42c8853e5533e9caec76e742a/test/fixtures/public
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          uname -m
+          source ./duckdb_version
+          test/smoke.sh libduckdb_bundle-${{ matrix.platform }}-httpfs-parquet.tar.xz "$DUCKDB_VER"
