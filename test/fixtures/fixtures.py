@@ -362,8 +362,10 @@ def verify(base, version):
     def ranged(url, data, start, end):
         def test():
             status, headers, body = fetch(url, byte_range=(start, end))
-            if status != 206:
+            if status == 200:
                 return f"status {status}, expected 206: the server ignores Range"
+            if status != 206:
+                return f"status {status}, expected 206"
             if headers.get("Content-Encoding"):
                 return f"Content-Encoding: {headers['Content-Encoding']}"
             content_range = f"bytes {start}-{end}/{len(data)}"

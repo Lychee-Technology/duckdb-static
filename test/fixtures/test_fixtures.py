@@ -121,6 +121,8 @@ class VerifyTest(unittest.TestCase):
         self.assertIn("FAIL manifest.json matches the committed copy: status 429, expected 200", output)
         # test/smoke.sh prints its rate-limited: line when a FAIL line matches this.
         self.assertRegex(output, re.compile(r"^FAIL .*: status 429,", re.MULTILINE))
+        # A ranged read that got 429 says nothing about Range support.
+        self.assertIn("FAIL GET basic.parquet bytes 0-3: status 429, expected 206\n", output)
 
     def test_compression_fails(self):
         self.assert_fails("compresses", "FAIL GET basic.parquet: Content-Encoding: gzip")
