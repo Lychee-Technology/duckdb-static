@@ -26,7 +26,8 @@
 # Exits 0 if every check that ran passed, 3 if only the remote run failed and
 # every failure was in the host or the network (DNS, TLS, connection, timeout,
 # or an HTTP error status such as 429), and 1 if anything points at the bundle
-# or the remote run's configuration can't be used.
+# or the remote run's configuration can't be used. When the host answered 429,
+# the summary at the end says so on a line of its own, starting "rate-limited:".
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -244,7 +245,7 @@ else
 	# Only verify's exit 1, a failed check of the host, is a host failure. Its
 	# 4 is a base URL that isn't one, and any other status is the script itself.
 	preflight=0
-	python3 -I "$here/fixtures/fixtures.py" verify "$remote" || preflight=$?
+	python3 -I "$here/fixtures/fixtures.py" verify "$remote" | tee "$work/preflight.log" || preflight=${PIPESTATUS[0]}
 	if [ "$preflight" -eq 1 ]; then
 		remote_status=3
 		remote_result="failed the preflight: the host doesn't serve the fixtures as the test needs"
@@ -279,6 +280,13 @@ fi
 echo "== summary"
 if [ $status -eq 0 ]; then echo "local:  passed"; else echo "local:  failed"; fi
 echo "remote: $remote_result"
+# A 429 is a host failure like any other, but its own line lets CI count how
+# often GitHub's rate limit stops the run. The patterns are fixtures.py
+# verify's FAIL lines, pinned by test/fixtures/test_fixtures.py, and the label
+# host_layer gives in smoke.c.
+if grep -qsE '^FAIL .*: status 429,' "$work/preflight.log" || grep -qsF 'HTTP 429, rate-limited' "$work/remote.log"; then
+	echo "rate-limited: the host answered HTTP 429"
+fi
 # 1 if anything points at the bundle, 3 if only the remote host or network failed
 if [ $status -ne 0 ] || [ $remote_status -eq 1 ]; then
 	exit 1
