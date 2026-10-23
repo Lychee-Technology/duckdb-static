@@ -18,7 +18,7 @@ jobs:
     container:
       image: public.ecr.aws/amazonlinux/amazonlinux:2023
     steps:
-      - run: dnf install -y --allowerasing tar xz git gcc14 openssl-devel libcurl-devel python3 binutils findutils
+      - run: dnf install -y --allowerasing tar xz git gcc14 gcc14-c++ openssl-devel libcurl-devel python3 binutils findutils
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v7
         with:
