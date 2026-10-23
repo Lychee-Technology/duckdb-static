@@ -134,7 +134,7 @@ class VerifyTest(unittest.TestCase):
 
     def test_url_without_scheme_fails(self):
         code, output = verify("raw.githubusercontent.com/x/y")
-        self.assertEqual(code, 1, output)
+        self.assertEqual(code, 4, output)
         self.assertIn("isn't an http:// or https:// URL", output)
         self.assertNotIn("Traceback", output)
 
@@ -142,7 +142,7 @@ class VerifyTest(unittest.TestCase):
         # urlsplit raises on the bracket and .port on the ports.
         for url in ("https://[::1", "http://127.0.0.1:abc", "http://127.0.0.1:99999"):
             code, output = verify(url)
-            self.assertEqual(code, 1, output)
+            self.assertEqual(code, 4, output)
             self.assertIn("isn't an http:// or https:// URL", output)
             self.assertNotIn("Traceback", output)
 

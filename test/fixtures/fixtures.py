@@ -17,8 +17,8 @@ downloaded and checked against its sha256. DUCKDB_CLI=<path> uses a local copy
 instead, which must report the same version.
 
 verify reads the base URL from DUCKDB_TEST_HTTPFS_BASE_URL when none is given.
-It exits 0 when every check passed, 1 when one failed and 2 when no endpoint is
-configured. Only the Python standard library is used, so it runs on Amazon
+It exits 0 when every check passed, 1 when one failed, 2 when no endpoint is
+configured and 4 when the base URL isn't an http:// or https:// URL. Only the Python standard library is used, so it runs on Amazon
 Linux 2023's Python 3.9.
 """
 import argparse
@@ -313,9 +313,10 @@ def verify(base, version):
         parsed = None
     if not parsed or parsed.scheme not in ("http", "https") or not parsed.netloc:
         # A mistyped base URL is a failure, not "not configured": exit 2 would
-        # let a CI job read it as a skip.
+        # let a CI job read it as a skip. Nor is it a failed check of the host,
+        # so a caller can tell a typo from a host that serves the files wrong.
         print(f"FAIL {base!r} isn't an http:// or https:// URL. Nothing was verified.")
-        return 1
+        return 4
     local = os.path.join(PUBLIC, version)
     manifest_bytes = read(os.path.join(local, "manifest.json"))
     manifest = json.loads(manifest_bytes)

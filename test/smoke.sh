@@ -25,7 +25,8 @@
 #
 # Exits 0 if every check that ran passed, 3 if only the remote run failed and
 # every failure was in the host or the network (DNS, TLS, connection, timeout,
-# or an HTTP error status such as 429), and 1 if anything points at the bundle.
+# or an HTTP error status such as 429), and 1 if anything points at the bundle
+# or the remote run's configuration can't be used.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -240,9 +241,19 @@ if [ -z "$remote" ]; then
 	remote_result="not configured: DUCKDB_TEST_HTTPFS_BASE_URL is unset, so nothing was read over HTTPS"
 else
 	echo "== preflight of $remote"
-	if ! python3 -I "$here/fixtures/fixtures.py" verify "$remote"; then
+	# Only verify's exit 1, a failed check of the host, is a host failure. Its
+	# 4 is a base URL that isn't one, and any other status is the script itself.
+	preflight=0
+	python3 -I "$here/fixtures/fixtures.py" verify "$remote" || preflight=$?
+	if [ "$preflight" -eq 1 ]; then
 		remote_status=3
-		remote_result="failed the preflight: the host doesn't serve the fixtures as the test needs, or the base URL is wrong"
+		remote_result="failed the preflight: the host doesn't serve the fixtures as the test needs"
+	elif [ "$preflight" -eq 4 ]; then
+		remote_status=1
+		remote_result="not run: DUCKDB_TEST_HTTPFS_BASE_URL isn't an http:// or https:// URL"
+	elif [ "$preflight" -ne 0 ]; then
+		remote_status=1
+		remote_result="failed: fixtures.py verify exited $preflight"
 	else
 		echo "== smoke-register --remote $remote"
 		code=0

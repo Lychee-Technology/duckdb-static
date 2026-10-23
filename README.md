@@ -96,7 +96,7 @@ After the local checks, `test/fixtures/fixtures.py verify` checks that the host 
 
 The fixture checks set httpfs's retries (`http_retries`, `http_retry_wait_ms`, `http_timeout`) rather than re-running a failed query, so a wrong result can't be retried into a pass. On a `429` or `503`, httpfs adds up to five retries and honors `Retry-After` up to 20 s. Against GitHub, a run makes 25 requests for the queries, plus 22 for the preflight.
 
-`test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `GITHUB_TOKEN` that can't be used.
+`test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `DUCKDB_TEST_HTTPFS_BASE_URL` or `GITHUB_TOKEN` that can't be used.
 
 When the smoke test fails, a line starting with `FAIL` says what went wrong:
 
@@ -108,7 +108,8 @@ When the smoke test fails, a line starting with `FAIL` says what went wrong:
 - `did not report any passed checks`: a binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
 - `the server logged no ... request`: an httpfs check passed without reading from the local server.
 - `read the fixtures without the token` or `sent the fixtures' token outside its scope`: httpfs didn't apply an `http` secret's `BEARER_TOKEN` to exactly the URLs under its `SCOPE`, which the remote run relies on to keep `GITHUB_TOKEN` away from other hosts.
-- `remote: failed the preflight`: the host doesn't serve the fixtures with working byte ranges, or the base URL is wrong. `fixtures.py verify`'s `FAIL` lines above say which.
+- `remote: failed the preflight`: the host doesn't serve the fixtures with working byte ranges, or the base URL points at the wrong place, such as a commit without the fixtures. `fixtures.py verify`'s `FAIL` lines above say which request failed.
+- `remote: not run: DUCKDB_TEST_HTTPFS_BASE_URL isn't an http:// or https:// URL`: the variable is mistyped. This exits 1, not 3, so that automation doesn't take it for a host failure.
 
 
 ## Contributing
