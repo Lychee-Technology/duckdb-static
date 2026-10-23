@@ -79,6 +79,20 @@ rm -rf "$here/libs"
 mkdir -p "$here/libs"
 tar -xJf "$BUNDLE_TARBALL" -C "$here/libs"
 
+echo "== building both variants"
+if ! docker build --progress=plain --build-arg "GO_ARCH=$arch" --target exporter \
+	--output "type=local,dest=$work/out" -f "$here/Dockerfile" "$here/.." >"$results/build.log" 2>&1; then
+	tail -n 40 "$results/build.log"
+	setup_failed "not run" "Building the variants failed; see build.log."
+fi
+prov build "$(jq -Rs 'split("\n") | map(select(length > 0))' "$work/out/build-info.txt")"
+
+stock_version=$(jq -r .duckdb_version "$work/out/stock/libduckdb-provenance.json")
+prov stock_library "$(jq -c . "$work/out/stock/libduckdb-provenance.json")"
+if [ "$stock_version" != "$DUCKDB_VER" ]; then
+	setup_failed incomparable "The stock duckdb-go library in example/go.mod is DuckDB $stock_version, but duckdb_version is $DUCKDB_VER."
+fi
+
 # The stock library has no httpfs. Provision DuckDB's own build of it in the
 # package, the way a stock deployment would, so that the timed interval only
 # loads it from local disk.
@@ -95,14 +109,6 @@ prov stock_httpfs "$(jq -n --arg url "$ext_url" --argjson seconds "$download" \
 	--argjson bytes "$(stat -c %s "$ext_dir/httpfs.duckdb_extension")" \
 	--arg sha256 "$(sha256sum "$ext_dir/httpfs.duckdb_extension" | cut -d' ' -f1)" \
 	'{url: $url, download_seconds: $seconds, gz_bytes: $gz, bytes: $bytes, sha256: $sha256}')"
-
-echo "== building both variants"
-if ! docker build --progress=plain --build-arg "GO_ARCH=$arch" --target exporter \
-	--output "type=local,dest=$work/out" -f "$here/Dockerfile" "$here/.." >"$results/build.log" 2>&1; then
-	tail -n 40 "$results/build.log"
-	setup_failed "not run" "Building the variants failed; see build.log."
-fi
-prov build "$(jq -Rs 'split("\n") | map(select(length > 0))' "$work/out/build-info.txt")"
 
 fixture=$repo/test/fixtures/public/v1/multi_row_group.parquet
 sizes='{}'

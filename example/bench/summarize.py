@@ -259,6 +259,12 @@ def markdown(prov, valid, summary):
     bundle = prov.get("bundle") or {}
     if bundle:
         out.append(f"- Bundle: `{bundle.get('name')}`, sha256 `{bundle.get('sha256')}`")
+    lib = prov.get("stock_library")
+    if lib:
+        out.append(
+            f"- Stock library: DuckDB {lib.get('duckdb_version')} for {lib.get('platform')}, source {lib.get('source')}, "
+            f"from {lib.get('url')} (sha256 `{lib.get('sha256')}`)"
+        )
     ext = prov.get("stock_httpfs")
     if ext:
         out.append(

@@ -50,6 +50,12 @@ It tests one of two bundles:
 
 The job pulls three images with no retries. From ECR Public it pulls `amazonlinux:2023` for the build and `lambda/provided:al2023`, which `sam local invoke` builds its runtime image on. From Docker Hub it pulls `duckdb/duckdb` anonymously, in the Dockerfile's `data` stage. A registry timeout fails the job: `Get "https://public.ecr.aws/v2/": context deadline exceeded` happened once during `sam local invoke`. If a job failed while pulling, re-run it before suspecting the change. In a build-workflow run, re-run it within a day: the job downloads that run's bundles, and the artifacts expire after one day, so a later re-run fails at the download. After that, dispatch the build again for a branch. For a tag that is still the latest release, dispatch this workflow on the tag (`gh workflow run example.yml --ref <tag>`), which tests the published assets, the same files the artifacts held. Don't re-run the whole tag run, because its release job would overwrite the release's assets with a rebuild. No Docker Hub rate-limit errors have shown up so far. If they do, the job needs Docker Hub credentials.
 
+## Benchmark
+
+`bench/` times DuckDB's readiness in a Lambda process, with the bundle and with `duckdb-go`'s stock library. `bench/README.md` has what it measures and how to run it. It is a second main package in this module so that both variants always build with the `duckdb-go` in this `go.mod`, but it has its own Dockerfile, template and scripts and changes nothing the example builds. Because it lives under `example/`, a PR that changes it also runs `example.yml`.
+
+When `go.mod` and `duckdb_version` name different DuckDB versions, the stock variant's DuckDB differs from the bundle's, and the benchmark reports `incomparable` until `go.mod` is bumped. Its stock `httpfs` comes from `extensions.duckdb.org` for the version in `duckdb_version`, so a DuckDB release that DuckDB hasn't published `httpfs` for is `incomparable` too.
+
 ## Podman
 
 The build and `sam local invoke` work with rootless Podman instead of Docker. This was tested on an x86_64 Fedora host with SELinux enforcing. Three things differ from Docker:

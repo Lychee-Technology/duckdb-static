@@ -35,7 +35,7 @@ A GitHub Actions workflow builds and publishes the bundle:
 2.  **Build:** Compiles DuckDB and its extensions on Amazon Linux 2023, once for arm64 and once for amd64, and merges them into one static library with [`scripts/package-bundle.sh`](scripts/package-bundle.sh).
 3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, `duckdb.h` and `duckdb_static_extension.h`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against the bundle and the shipped headers and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server, and that the extensions are missing when nothing registers them. It fails if a check fails, if none ran, or if a test binary needs a shared library other than the ones listed under [Linking and registering the extensions](#linking-and-registering-the-extensions).
 4.  **Release:** Checks each `.tar.xz` file against the sha256 its build recorded after the smoke test, and publishes the files and a `SHA256SUMS` to GitHub Releases.
-5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`, and runs the fixture queries over HTTPS. The release waits for neither; see [Releasing](#releasing).
+5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`, runs the fixture queries over HTTPS, and [benchmarks](example/bench/README.md) DuckDB's readiness with the bundle against `duckdb-go`'s stock library. The release waits for none of them; see [Releasing](#releasing).
 
 ### Installation / Usage
 You don't need to build from source:
@@ -88,10 +88,11 @@ On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` fi
 ### Releasing
 A run for a `v*` tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload.
 
-Two jobs run alongside the release, and the release waits for neither:
+Three jobs run alongside the release, and the release waits for none of them:
 
 - `example` builds and invokes the Go Lambda. A DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
 - `httpfs-remote` runs the fixture queries over HTTPS. It stays a separate signal until the fixture hosting has proven reliable; see below.
+- `benchmark` times DuckDB's readiness and a first local Parquet query with the bundle and with `duckdb-go`'s stock library, under SAM. It measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).
 
 A dispatch on a tag that already has a release, including a draft, fails in the release job and leaves the release as it is. To replace its assets, dispatch with `overwrite-release`:
 
