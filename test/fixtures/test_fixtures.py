@@ -32,6 +32,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
     fault = "good"
 
     def respond(self, send_body):
+        if self.fault == "rate_limited":
+            return self.send(429, {}, b"", send_body)
         path = os.path.join(PUBLIC, self.path.lstrip("/"))
         if not os.path.isfile(path):
             if self.fault == "fallback_page":
@@ -112,6 +114,13 @@ class VerifyTest(unittest.TestCase):
 
     def test_ignored_range_fails(self):
         self.assert_fails("ignores_range", "status 200, expected 206: the server ignores Range")
+
+    def test_rate_limit_fails(self):
+        code, output = verify(self.serve("rate_limited"))
+        self.assertEqual(code, 1, output)
+        self.assertIn("FAIL manifest.json matches the committed copy: status 429, expected 200", output)
+        # test/smoke.sh prints its rate-limited: line when a FAIL line matches this.
+        self.assertRegex(output, re.compile(r"^FAIL .*: status 429,", re.MULTILINE))
 
     def test_compression_fails(self):
         self.assert_fails("compresses", "FAIL GET basic.parquet: Content-Encoding: gzip")

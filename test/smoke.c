@@ -111,6 +111,7 @@ static const char *host_layer(duckdb_result *result, char *label, size_t size) {
 	if (duckdb_result_error_type(result) == DUCKDB_ERROR_HTTP) {
 		int status = http_status(message);
 		if (status) {
+			// smoke.sh's rate-limited: line looks for "HTTP 429, rate-limited".
 			snprintf(label, size, "host: HTTP %d%s", status, status == 429 ? ", rate-limited" : "");
 		} else {
 			// httpfs's error for a host that answers a ranged GET with the whole file

@@ -281,7 +281,9 @@ echo "== summary"
 if [ $status -eq 0 ]; then echo "local:  passed"; else echo "local:  failed"; fi
 echo "remote: $remote_result"
 # A 429 is a host failure like any other, but its own line lets CI count how
-# often GitHub's rate limit stops the run.
+# often GitHub's rate limit stops the run. The patterns are fixtures.py
+# verify's FAIL lines, pinned by test/fixtures/test_fixtures.py, and the label
+# host_layer gives in smoke.c.
 if grep -qsE '^FAIL .*: status 429,' "$work/preflight.log" || grep -qsF 'HTTP 429, rate-limited' "$work/remote.log"; then
 	echo "rate-limited: the host answered HTTP 429"
 fi
