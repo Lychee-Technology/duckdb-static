@@ -214,11 +214,15 @@ jobs:
           status=0
           test/smoke.sh "$TARBALL" "$DUCKDB_VER" | tee "$RUNNER_TEMP/smoke.log" || status=$?
 
+          summary=$(sed -n '/^== summary$/,$p' "$RUNNER_TEMP/smoke.log" | tail -n +2)
+          if [ -z "$summary" ]; then
+            summary="test/smoke.sh exited $status before its summary, see the log"
+          fi
           {
             echo "### httpfs remote (${{ matrix.arch }})"
             echo "Tested: \`$(cat "$TARBALL.sha256")\`"
             echo '```'
-            sed -n '/^== summary$/,$p' "$RUNNER_TEMP/smoke.log" | tail -n +2
+            echo "$summary"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           # Reported apart from other failures, so the job summaries show how
