@@ -33,7 +33,7 @@ The bundle contains DuckDB 2.0.0 (the version in [`duckdb_version`](duckdb_versi
 A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** Pushing a `v*` tag starts the workflow.
 2.  **Build:** Compiles DuckDB and its extensions on Amazon Linux 2023, once for arm64 and once for amd64, and merges them into one static library with [`scripts/package-bundle.sh`](scripts/package-bundle.sh).
-3.  **Smoke test:** Links [`test/smoke.c`](test/smoke.c) against each bundle and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that the extensions are missing when nothing registers them. It fails if a check fails or if none ran.
+3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, `duckdb.h` and `duckdb_static_extension.h`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against the bundle and the shipped headers and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that the extensions are missing when nothing registers them. It fails if a check fails, if none ran, or if a test binary needs a shared library other than the ones listed under [Linking and registering the extensions](#linking-and-registering-the-extensions).
 4.  **Release:** Packages each build as a `.tar.xz` file and publishes it to GitHub Releases.
 5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`.
 
@@ -52,7 +52,7 @@ The tarball contains `libduckdb_bundle.a` and the headers `duckdb.h` and `duckdb
 -L<dir> -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl
 ```
 
-DuckDB itself is linked statically. libstdc++, libcurl and OpenSSL are linked dynamically from the system. On Amazon Linux 2023, link with `gcc14-gcc` or `gcc14-g++` (and `gcc14-libstdc++-devel`), the compiler the bundle is built with.
+DuckDB itself is linked statically. libstdc++, libcurl and OpenSSL are linked dynamically from the system. A binary linked this way needs these shared libraries at run time: libstdc++, libm, libcurl, libssl, libcrypto, libgcc_s, libc and the dynamic loader, plus libcurl's own dependencies, which on Amazon Linux 2023 include nghttp2, libpsl and Kerberos and are installed with it. It doesn't need a DuckDB shared library. On Amazon Linux 2023, link with `gcc14-gcc` or `gcc14-g++` (and `gcc14-libstdc++-devel`), the compiler the bundle is built with.
 
 Since DuckDB 2.0, a statically linked extension does nothing until the program registers it, and the registration has to happen before the first database opens. The bundle contains DuckDB's generated loader for its extensions, so either of these works:
 
@@ -84,6 +84,16 @@ CC=gcc14-gcc test/smoke.sh libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz v2
 ```
 
 On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` file name. To build and invoke the Lambda example against a local bundle, see [`example/README.md`](example/README.md). The Parquet fixtures for testing httpfs against a public HTTPS site, and how to host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md).
+
+When the smoke test fails, a line starting with `FAIL` says what went wrong:
+
+- `is not a readable .tar.xz` or `the tarball holds`: the tarball is damaged, or `scripts/package-bundle.sh` packaged the wrong files.
+- `libduckdb_bundle.a is built for`: the tarball is for the other architecture, or the archive mixes objects from two.
+- `doesn't build against the tarball's headers and archive`: a shipped header doesn't compile, or the archive lacks a symbol a consumer links, such as an extension's `describe` function. The compiler's error above it names the cause.
+- `needs <library>, which isn't on smoke.sh's allowlist`: consumers would need a new shared library at run time. If that is intended, add the library to the allowlist in `test/smoke.sh` and to the list above.
+- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows.
+- `did not report any passed checks`: a binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
+- `the server logged no ... request`: an httpfs check passed without reading from the local server.
 
 
 ## Contributing
