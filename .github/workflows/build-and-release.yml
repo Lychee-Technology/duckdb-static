@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      overwrite-release:
+        description: On a tag that already has a release, replace its assets with this run's. Without it, the release job refuses.
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -252,8 +257,37 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag'
+    # One release job per tag at a time, so a second dispatch's guard runs
+    # after the first has created the release. A run that is still waiting is
+    # cancelled when a newer one queues for the same tag.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
 
     steps:
+      # A dispatch on a tag that already has a release, even a draft, would
+      # replace its assets with this run's bundles. A tag push isn't checked, so
+      # it still fills a release that someone created for the tag before
+      # pushing it. The listing goes through every page, drafts included, and
+      # fails rather than come back short: `gh release list` stops at its
+      # --limit without an error, and the REST listing errors after 10,000.
+      - name: Refuse to replace an existing release's assets
+        if: github.event_name == 'workflow_dispatch' && !inputs.overwrite-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! releases=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[].tag_name'); then
+            echo "::error title=Release lookup failed::Couldn't list every release, so it's unknown whether $TAG already has one."
+            exit 1
+          fi
+          if grep -Fxq -- "$TAG" <<<"$releases"; then
+            echo "::error title=Release exists::$TAG already has a release. Dispatch with overwrite-release to replace its assets with this run's."
+            exit 1
+          fi
+          echo "$TAG has no release yet."
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
@@ -274,12 +308,41 @@ jobs:
           echo "Files to be released:"
           ls -lh ./release/
 
-      # Only the tarballs: example/Makefile downloads the first asset whose name
-      # contains the tarball's, so it could pick a published .sha256 instead.
+      # Publishes only tarballs whose bytes match the sha256 their build job
+      # recorded after the smoke test, one per architecture. The records go out
+      # as one SHA256SUMS: example/Makefile downloads the first asset whose name
+      # contains the tarball's, so it could pick a published <tarball>.sha256.
+      - name: Check that the tarballs are the ones the build smoke-tested
+        working-directory: ./release
+        shell: bash
+        run: |
+          shopt -s nullglob
+          tarballs=(*.tar.xz)
+          if [ "${#tarballs[@]}" -ne 2 ]; then
+            echo "::error title=Missing tarball::Expected the arm64 and amd64 tarballs, found: ${tarballs[*]}"
+            exit 1
+          fi
+          for t in "${tarballs[@]}"; do
+            if [ ! -f "$t.sha256" ] || [ "$(sha256sum "$t")" != "$(cat "$t.sha256")" ]; then
+              echo "::error title=Untested tarball::$t doesn't match the sha256 its build recorded after the smoke test."
+              exit 1
+            fi
+          done
+          cat "${tarballs[@]/%/.sha256}" > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo 'Releasing, as smoke-tested:'
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ./release/*.tar.xz
+          files: |
+            ./release/*.tar.xz
+            ./release/SHA256SUMS
           body: |
             Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
 
@@ -288,6 +351,8 @@ jobs:
 
             **Variants:**
             - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with core_functions, parquet, json, icu, httpfs
+
+            `SHA256SUMS` holds the sha256 of each tarball, as recorded after its smoke test. Check a download with `sha256sum -c --ignore-missing SHA256SUMS`.
 
             Since DuckDB 2.0 the extensions must be registered before the first database opens: call `duckdb_register_static_extensions()`, or link with `-Wl,-u,duckdb_register_static_extensions`. See the README.
         env:
