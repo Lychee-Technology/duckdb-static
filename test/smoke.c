@@ -23,7 +23,8 @@
 // Prints one line per check and ends with "<n> checks passed". It exits 0 if
 // every check passed and at least one ran, 3 if every failed check failed in
 // the network or with an HTTP error status, which points at the host rather
-// than the bundle, and 1 otherwise.
+// than the bundle, 2 on a usage error or a GITHUB_TOKEN it can't use, and 1
+// otherwise.
 #include "duckdb.h"
 // The tarball's other header. Nothing else compiles it, and no shipped header
 // declares duckdb_register_static_extensions, so it is declared below.
@@ -665,16 +666,18 @@ int main(int argc, char **argv) {
 	expect_error("json", "SELECT json_extract_string('{\"a\": 1}', '$.a')");
 #else
 	if (remote) {
-		// GITHUB_TOKEN goes into the secret's SQL, so it may hold only the
-		// characters GitHub's tokens have.
+		// GITHUB_TOKEN goes into an SQL string and an HTTP header, so it can't
+		// hold a quote, a space or a control character.
 		token = getenv("GITHUB_TOKEN");
 		if (token && !*token) {
 			token = NULL;
 		}
-		if (token && strspn(token, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_") != strlen(token)) {
-			token = NULL;
-			fail("GITHUB_TOKEN", "has a character other than a letter, a digit or '_', so it isn't used");
-			return finish();
+		for (const char *c = token; c && *c; c++) {
+			if (*c == '\'' || (unsigned char)*c <= ' ' || *c == 0x7f) {
+				token = NULL;
+				printf("FAIL GITHUB_TOKEN has a quote, a space or a control character, so it can't be used\n");
+				return 2;
+			}
 		}
 		printf("info GITHUB_TOKEN is %s\n",
 		       token ? "set: requests under " REMOTE_SCOPE " send it as a bearer token"

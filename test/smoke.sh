@@ -251,6 +251,9 @@ else
 		if [ "$code" -eq 3 ]; then
 			remote_status=3
 			remote_result="failed in the host or network, not in the bundle: see the FAIL lines labeled host: or network:"
+		elif [ "$code" -eq 2 ]; then
+			remote_status=1
+			remote_result="not run: its configuration is invalid, see the FAIL line above"
 		elif [ "$code" -ne 0 ]; then
 			remote_status=1
 			remote_result="failed: a FAIL line without a host: or network: label points at the bundle"

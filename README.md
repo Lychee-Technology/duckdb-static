@@ -96,7 +96,7 @@ After the local checks, `test/fixtures/fixtures.py verify` checks that the host 
 
 The fixture checks set httpfs's retries (`http_retries`, `http_retry_wait_ms`, `http_timeout`) rather than re-running a failed query, so a wrong result can't be retried into a pass. On a `429` or `503`, httpfs adds up to five retries and honors `Retry-After` up to 20 s. Against GitHub, a run makes 25 requests for the queries, plus 22 for the preflight.
 
-`test/smoke.sh` exits 0 when every check that ran passed, 1 when a failure points at the bundle, and 3 when only the remote run failed and every failure was in the host or the network.
+`test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `GITHUB_TOKEN` that can't be used.
 
 When the smoke test fails, a line starting with `FAIL` says what went wrong:
 
