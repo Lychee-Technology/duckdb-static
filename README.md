@@ -33,7 +33,7 @@ The bundle contains DuckDB 2.0.0 (the version in [`duckdb_version`](duckdb_versi
 A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** Pushing a `v*` tag starts the workflow.
 2.  **Build:** Compiles DuckDB and its extensions on Amazon Linux 2023, once for arm64 and once for amd64, and merges them into one static library with [`scripts/package-bundle.sh`](scripts/package-bundle.sh).
-3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, `duckdb.h` and `duckdb_static_extension.h`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against the bundle and the shipped headers and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that the extensions are missing when nothing registers them. It fails if a check fails, if none ran, or if a test binary needs a shared library other than the ones listed under [Linking and registering the extensions](#linking-and-registering-the-extensions).
+3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, `duckdb.h` and `duckdb_static_extension.h`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against the bundle and the shipped headers and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server. It also checks core SQL, nested JSON, local Parquet and a reopened database file, the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server, and that the extensions are missing when nothing registers them. It fails if a check fails, if none ran, or if a test binary needs a shared library other than the ones listed under [Linking and registering the extensions](#linking-and-registering-the-extensions).
 4.  **Release:** Packages each build as a `.tar.xz` file and publishes it to GitHub Releases.
 5.  **Test:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`.
 
@@ -85,15 +85,31 @@ CC=gcc14-gcc test/smoke.sh libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz v2
 
 On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` file name. To build and invoke the Lambda example against a local bundle, see [`example/README.md`](example/README.md). The Parquet fixtures for testing httpfs against a public HTTPS site, and how to host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md).
 
+To also run the fixture queries over real HTTPS, point `DUCKDB_TEST_HTTPFS_BASE_URL` at the fixtures on GitHub, pinned to a commit on `main`:
+
+```bash
+DUCKDB_TEST_HTTPFS_BASE_URL=https://raw.githubusercontent.com/Lychee-Technology/duckdb-static/$(git rev-parse origin/main)/test/fixtures/public \
+  CC=gcc14-gcc test/smoke.sh libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz v2.0.0
+```
+
+After the local checks, `test/fixtures/fixtures.py verify` checks that the host serves the committed files with working byte ranges, and then the same queries run against it. With `GITHUB_TOKEN` set, requests to this repository's files on `raw.githubusercontent.com` send it as a bearer token, because GitHub limits anonymous downloads more tightly; it is never sent to another URL or printed. Without `DUCKDB_TEST_HTTPFS_BASE_URL`, the summary at the end says the remote run is not configured, which is not a pass.
+
+The fixture checks set httpfs's retries (`http_retries`, `http_retry_wait_ms`, `http_timeout`) rather than re-running a failed query, so a wrong result can't be retried into a pass. On a `429` or `503`, httpfs adds up to five retries and honors `Retry-After` up to 20 s. Against GitHub, a run without retries makes 25 requests for the queries, plus 22 for the preflight.
+
+`test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `DUCKDB_TEST_HTTPFS_BASE_URL` or `GITHUB_TOKEN` that can't be used.
+
 When the smoke test fails, a line starting with `FAIL` says what went wrong:
 
 - `is not a readable .tar.xz` or `the tarball holds`: the tarball is damaged, or `scripts/package-bundle.sh` packaged the wrong files.
 - `libduckdb_bundle.a is built for`: the tarball is for the other architecture, or the archive mixes objects from two.
 - `doesn't build against the tarball's headers and archive`: a shipped header doesn't compile, or the archive lacks a symbol a consumer links, such as an extension's `describe` function. The compiler's error above it names the cause.
 - `needs <library>, which isn't on smoke.sh's allowlist`: consumers would need a new shared library at run time. If that is intended, add the library to the allowlist in `test/smoke.sh` and to the list above.
-- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows.
+- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows. An error from the network or an HTTP server is labeled `[network: DNS]`, `[network: TLS]`, `[network: timeout]`, `[network: connection]`, `[host: HTTP <status>]` or `[host: byte ranges]`. After such an error in a fixture check, the remaining fixture checks are skipped. `[host: HTTP 429, rate-limited]` means GitHub's rate limit was hit after httpfs's retries; the bundle isn't at fault.
 - `did not report any passed checks`: a binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
 - `the server logged no ... request`: an httpfs check passed without reading from the local server.
+- `read the fixtures without the token` or `sent the fixtures' token outside its scope`: httpfs didn't apply an `http` secret's `BEARER_TOKEN` to exactly the URLs under its `SCOPE`, which the remote run relies on to keep `GITHUB_TOKEN` away from other hosts.
+- `remote: failed the preflight`: the host doesn't serve the fixtures with working byte ranges, or the base URL points at the wrong place, such as a commit without the fixtures. `fixtures.py verify`'s `FAIL` lines above say which request failed.
+- `remote: not run: DUCKDB_TEST_HTTPFS_BASE_URL isn't an http:// or https:// URL`: the variable is mistyped. This exits 1, not 3, so that automation doesn't take it for a host failure.
 
 
 ## Contributing

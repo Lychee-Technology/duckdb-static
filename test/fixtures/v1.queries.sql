@@ -1,10 +1,10 @@
 -- The exact results the v1 fixtures must give. Each entry is a line
 -- "-- expect: <value>" followed by one query that ends with ";" at the end of
 -- a line. The query returns one row with one column, and <value> is that
--- column cast to VARCHAR, which is what duckdb_value_varchar returns. {dir} is
--- the directory that holds the fixture files: a local path, or a URL such as
--- https://<site>/v1. test/fixtures/fixtures.py checks every entry when it
--- generates the files.
+-- column cast to VARCHAR. duckdb_value_varchar returns NULL for a list, so
+-- test/smoke.c casts in SQL. {dir} is the directory that holds the fixture
+-- files: a local path, or a URL such as https://<site>/v1.
+-- test/fixtures/fixtures.py checks every entry when it generates the files.
 
 -- basic.parquet: id 1..100
 -- expect: 100
