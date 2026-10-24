@@ -58,7 +58,7 @@ The tarball contains only `libduckdb_bundle.a`. Compile against `duckdb.h` from 
 
 DuckDB itself is linked statically. libstdc++, libcurl and OpenSSL are linked dynamically from the system. A binary linked this way needs these shared libraries at run time: libstdc++, libm, libcurl, libssl, libcrypto, libgcc_s, libc and the dynamic loader, plus libcurl's own dependencies, which on Amazon Linux 2023 are installed with it. It doesn't need a DuckDB shared library. On Amazon Linux 2023, link with `gcc14-gcc` or `gcc14-g++`, the compiler the bundle is built with.
 
-Every database the program opens has the five extensions loaded; nothing has to register them. `INSTALL` and `LOAD` of any other extension fail with a Permission Error, because the bundle can't download extensions.
+Every database opened through the C API, which includes the Go bindings, has the five extensions loaded; nothing has to register them. The same holds from C++ with the default `DBConfig`. Only a C++ caller that sets `DBConfigOptions::load_extensions` to `false` opens a database without them. `INSTALL` and `LOAD` of any other extension fail with a Permission Error, because the bundle can't download extensions.
 
 ### Testing a bundle
 [`test/smoke.sh`](test/smoke.sh) takes a tarball, the DuckDB version it must report, and a directory holding the matching `duckdb.h`. Each build uploads that header as the `duckdb-header-<arch>` artifact next to the tarball, so a CI build can be tested without a DuckDB checkout. On an x86_64 machine, in a fresh Amazon Linux 2023 container:
