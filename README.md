@@ -2,6 +2,8 @@
 
 > **A pre-compiled, static bundle of DuckDB optimized for serverless environments (AWS Lambda, Google Cloud Functions, etc.).**
 
+This is the `duckdb-v1.5.x` maintenance branch, which builds DuckDB 1.5.6. `main` builds DuckDB 2.0. [docs/backport-1.5.x.md](docs/backport-1.5.x.md) lists how the two differ and what this branch takes from `main`.
+
 
 ## Why DuckDB Static Library?
 
