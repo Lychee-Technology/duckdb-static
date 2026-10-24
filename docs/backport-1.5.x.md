@@ -90,4 +90,4 @@ Most commits also edit `AGENTS.md` and `README.md`, which describe 2.0 on main. 
 - Branch from `duckdb-v1.5.x` and open PRs against it. Never merge main into it.
 - A PR into this branch runs no checks until #42 lands. Until then, test a change by dispatching `build-and-release.yml` on the PR's branch, which builds both arches and uploads the bundles without releasing.
 - GitHub closes an issue from `Closes #N` only when the PR merges into the default branch. Close backport issues by hand after their PR merges here.
-- Release tags for this line are `v1.5.6_<n>` with `n` ≥ 1, pushed on this branch's commits. Until #42 lands, a tag runs the tag's workflow: no smoke test, no overwrite guard, and no `make_latest: false`, so don't tag before then.
+- Release tags for this line are `v1.5.6_<n>` with `n` ≥ 1, pushed on this branch's commits. Until #42 lands, a tag runs the tag's workflow: no smoke test, no overwrite guard, and no `make_latest: false`, so don't tag before then. After a release, point the README's installation link at the new tag.

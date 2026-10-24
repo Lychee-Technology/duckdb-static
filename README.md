@@ -43,8 +43,8 @@ This repository utilizes a **GitHub Actions** workflow to ensure reliability and
 
 ### Installation / Usage
 You don't need to build from source. simply:
-1.  Go to the [**Releases**](https://github.com/Lychee-Technology/duckdb-static/releases) page.
-2.  Download the latest `.tar.xz` file for the corresponding arch.
+1.  Open the newest `v1.5.6_<n>` release, currently [**v1.5.6_0**](https://github.com/Lychee-Technology/duckdb-static/releases/tag/v1.5.6_0). The release marked Latest is `main`'s DuckDB 2.0 build, and its tarballs have the same names, so choose the release by its tag.
+2.  Download the `.tar.xz` file for the corresponding arch.
 3.  Include the binary in your serverless deployment package.
 
 
