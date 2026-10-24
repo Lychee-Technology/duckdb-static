@@ -2,13 +2,17 @@
 """Tests fixtures.py verify against a local server that serves test/fixtures/public
 correctly, or with one of the faults verify must report, tests that generate
 and check guard the committed versions, and tests that a DUCKDB_CLI override
-still names the CLI after generation changes directories. The check test
-downloads the pinned DuckDB CLI unless DUCKDB_CLI is set.
+still names the CLI after generation changes directories. Also tests serve.py,
+the range server test/smoke.sh and example/bench/ use, and that verify passes
+against it. The check test downloads the pinned DuckDB CLI unless DUCKDB_CLI
+is set.
 
 Usage: python3 test/fixtures/test_fixtures.py
 """
 import gzip
+import http.client
 import http.server
+import json
 import os
 import re
 import shutil
@@ -16,11 +20,13 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures.py")
+SERVE = os.path.join(HERE, "serve.py")
 PUBLIC = os.path.join(HERE, "public")
 
 sys.path.insert(0, HERE)
@@ -169,6 +175,120 @@ class VerifyTest(unittest.TestCase):
         code, output = verify()
         self.assertEqual(code, 2, output)
         self.assertIn("Not configured", output)
+
+
+class ServeTest(unittest.TestCase):
+    """serve.py, run as test/smoke.sh runs it: data/ as the root and the
+    committed fixtures mounted at /public/."""
+
+    def setUp(self):
+        work = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, work)
+        self.root = os.path.join(work, "data")
+        os.mkdir(self.root)
+        with open(os.path.join(self.root, "local.bin"), "wb") as f:
+            f.write(bytes(range(100)))
+        self.log = os.path.join(work, "requests.log")
+        self.json_log = os.path.join(work, "requests.jsonl")
+        port_file = os.path.join(work, "port")
+        process = subprocess.Popen(
+            [sys.executable, "-I", SERVE, "--root", self.root, "--mount", f"public={PUBLIC}",
+             "--port-file", port_file, "--log", self.log, "--json-log", self.json_log],
+            stderr=subprocess.PIPE, text=True)
+        self.addCleanup(process.stderr.close)
+        self.addCleanup(process.wait)
+        self.addCleanup(process.terminate)
+        for _ in range(100):
+            if os.path.exists(port_file):
+                break
+            time.sleep(0.05)
+        with open(port_file) as f:
+            self.port = int(f.read())
+        self.assertEqual(process.stderr.readline(), f"serving on 127.0.0.1:{self.port}\n")
+        with open(os.path.join(PUBLIC, "v2", "tiny.parquet"), "rb") as f:
+            self.tiny = f.read()
+
+    def request(self, method, path, headers=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        try:
+            connection.request(method, path, headers=headers or {})
+            response = connection.getresponse()
+            return response.status, dict(response.getheaders()), response.read()
+        finally:
+            connection.close()
+
+    def records(self, count):
+        """Waits up to 10 s for count records in the JSON log, which the server
+        writes after each response, and returns them in the order their
+        requests started."""
+        deadline = time.monotonic() + 10
+        while True:
+            with open(self.json_log) as f:
+                records = [json.loads(line) for line in f if line.endswith("\n")]
+            if len(records) >= count or time.monotonic() > deadline:
+                return sorted(records, key=lambda r: r["time"])
+            time.sleep(0.01)
+
+    def test_head_and_get(self):
+        status, headers, body = self.request("HEAD", "/public/v2/tiny.parquet")
+        self.assertEqual((status, headers["Content-Length"], headers["Accept-Ranges"], body),
+                         (200, str(len(self.tiny)), "bytes", b""))
+        status, _, body = self.request("GET", "/public/v2/tiny.parquet")
+        self.assertEqual((status, body), (200, self.tiny))
+
+    def test_ranges(self):
+        size = len(self.tiny)
+        for header, start, end in (("bytes=0-3", 0, 3), (f"bytes={size - 8}-", size - 8, size - 1),
+                                   (f"bytes=100-{size + 50}", 100, size - 1)):
+            status, headers, body = self.request("GET", "/public/v2/tiny.parquet", {"Range": header})
+            self.assertEqual(status, 206, header)
+            self.assertEqual(headers["Content-Range"], f"bytes {start}-{end}/{size}")
+            self.assertEqual(body, self.tiny[start:end + 1])
+
+    def test_unsatisfiable_range_is_416(self):
+        size = len(self.tiny)
+        for header in (f"bytes={size}-", "bytes=10-5"):
+            status, headers, body = self.request("GET", "/public/v2/tiny.parquet", {"Range": header})
+            self.assertEqual((status, headers["Content-Range"], body), (416, f"bytes */{size}", b""), header)
+
+    def test_root_missing_files_and_escapes(self):
+        status, _, body = self.request("GET", "/local.bin")
+        self.assertEqual((status, body), (200, bytes(range(100))))
+        for path in ("/missing.parquet", "/public/v2/missing.parquet", "/public/../data/local.bin",
+                     "/public/%2e%2e/v1/basic.parquet"):
+            self.assertEqual(self.request("GET", path)[0], 404, path)
+
+    def test_logs(self):
+        lines = []
+        for method, path, headers, auth in (
+                ("HEAD", "/public/v2/tiny.parquet?instance=abc", {"Authorization": "Bearer x"}, "Bearer"),
+                ("GET", "/public/v2/tiny.parquet?instance=abc", {"Range": "bytes=0-9"}, "-"),
+                ("GET", "/missing.parquet", {}, "-")):
+            self.request(method, path, headers)
+            # test/smoke.sh reads this log as soon as its client exits, so each
+            # request must be in it by the time its response has arrived.
+            lines.append(f"{method} {path} {auth}\n")
+            with open(self.log) as f:
+                self.assertEqual(f.read(), "".join(lines))
+        records = self.records(3)
+        for record in records:
+            self.assertGreaterEqual(record.pop("duration_ms"), 0)
+            self.assertEqual(record.pop("client"), "127.0.0.1")
+            self.assertIsInstance(record.pop("time"), float)
+        self.assertEqual(records, [
+            {"method": "HEAD", "path": "/public/v2/tiny.parquet", "query": "instance=abc", "range": None,
+             "status": 200, "bytes": 0},
+            {"method": "GET", "path": "/public/v2/tiny.parquet", "query": "instance=abc", "range": "bytes=0-9",
+             "status": 206, "bytes": 10},
+            {"method": "GET", "path": "/missing.parquet", "query": "", "range": None, "status": 404, "bytes": 0},
+        ])
+
+    def test_verify_passes(self):
+        # As example/bench/run.sh checks the server before any sample.
+        for version, checks in (("v1", 22), ("v2", 7)):
+            code, output = verify(f"http://127.0.0.1:{self.port}/public", "--version", version)
+            self.assertEqual(code, 0, output)
+            self.assertIn(f"{checks} of {checks} checks passed", output)
 
 
 class CliOverrideTest(unittest.TestCase):

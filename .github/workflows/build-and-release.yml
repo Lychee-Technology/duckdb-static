@@ -20,6 +20,14 @@ on:
         description: On a tag that already has a release, replace its assets with this run's. Without it, the release job refuses.
         type: boolean
         default: false
+      benchmark:
+        description: Run the benchmark on a branch other than main too. Runs on main and on tags always run it.
+        type: boolean
+        default: false
+      benchmark-samples:
+        description: Benchmark samples per variant per architecture.
+        type: number
+        default: 30
 
 # A new push to a PR cancels the PR's earlier run. Every other run has a group
 # of its own.
@@ -167,6 +175,19 @@ jobs:
     uses: ./.github/workflows/example.yml
     with:
       bundle-artifact: true
+
+  # Benchmarks DuckDB readiness with the bundles above against duckdb-go's
+  # stock library (example/bench/). It runs on main and on tags, and on another
+  # branch when the dispatch asks for it; never on PRs. Nothing waits for it.
+  benchmark:
+    needs: build
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref_type == 'tag' || inputs.benchmark)
+    uses: ./.github/workflows/benchmark.yml
+    permissions:
+      contents: read
+      actions: read
+    with:
+      samples: ${{ format('{0}', inputs.benchmark-samples || 30) }}
 
   # Runs the fixture queries over real HTTPS on the bundles above, in a fresh
   # Amazon Linux 2023 container, against the copy of test/fixtures/public at the

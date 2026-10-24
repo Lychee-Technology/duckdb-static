@@ -4,7 +4,7 @@ What the tests cover, which of them gate a release, how to run them on your own 
 
 ## Coverage
 
-Apart from the packaging script's own checks, every test of the bundle's C API is in one harness. `smoke.sh` checks the tarball, then builds `smoke.c` against it three ways and runs each binary; the comments at the top of both files say how. Two other workflows test something else: the fixtures themselves, and the Go Lambda in `example/`.
+Apart from the packaging script's own checks, every test of the bundle's C API is in one harness. `smoke.sh` checks the tarball, then builds `smoke.c` against it three ways and runs each binary; the comments at the top of both files say how. Other workflows test something else: the fixtures themselves and the Go Lambda in `example/`. The benchmark in `example/bench/` measures rather than tests, but it checks results on the way.
 
 | What is checked | Run by | Network | Blocks a release |
 |---|---|---|---|
@@ -17,6 +17,8 @@ Apart from the packaging script's own checks, every test of the bundle's C API i
 | The same fixture queries over real HTTPS, after `fixtures.py verify` checks the host: TLS through Amazon Linux 2023's libcurl, OpenSSL and CA bundle, and GitHub's byte ranges and rate limits | `smoke.sh` with `DUCKDB_TEST_HTTPFS_BASE_URL`, in the `httpfs-remote` job | internet | no |
 | The fixtures regenerate byte for byte on arm64 and x86_64, and `fixtures.py`'s own tests | `fixtures.yml` | downloads the DuckDB CLI | no bundle involved |
 | The Go Lambda builds against the bundle and returns the README's result under `sam local invoke` on `provided.al2023` | `example.yml` | pulls container images | no |
+| Under `sam local invoke`, the bundle and duckdb-go's stock library each open DuckDB, load the five extensions with automatic installation off, the bundle's built in and the stock `httpfs` from the package, and return the exact `sum(id)` of `v2/tiny.parquet` read over HTTP from a local fixture server, reporting the same DuckDB build; the time each step takes and the requests each read made. Also, untimed, both read a v1 fixture over HTTPS when `DUCKDB_TEST_HTTPFS_BASE_URL` is set | `benchmark.yml`, which runs `example/bench/run.sh` | pulls container images and the stock `httpfs`; the timed reads stay on a local container network | no |
+| The benchmark's own tests: the summarizer's status decisions and statistics, and that `run.sh` removes the fixture server's container and network when creating the network, starting the server or its first check fails | `test_summarize.py`, and `test_run.py` with a stand-in for `docker`, in `benchmark.yml` | none | no bundle involved |
 
 The local server is about 50 lines of Python. It serves files with byte ranges and logs each request's `Authorization` scheme, but it checks no credentials. So the S3 check shows that httpfs signs its requests, not that S3 would accept the signature, and no local check exercises TLS. Only the HTTPS row does, and only against the configured host, which in CI is `raw.githubusercontent.com`.
 
@@ -30,10 +32,11 @@ Nothing tests S3 over TLS or against AWS, virtual-hosted-style S3 URLs, a deploy
 | A PR, or a push to `main`, that changes `test/fixtures/` or `fixtures.yml`; or a `workflow_dispatch` of `fixtures.yml` on any ref | `fixtures.yml` | None |
 | A PR that changes `duckdb_version`, `scripts/`, `test/` or `build-and-release.yml`, in a file that isn't Markdown | The build and smoke test on each architecture, then `example` and `httpfs-remote` | The tarballs this run built from the PR merged into its base. They are kept as artifacts for one day, and nothing is released. A new push to the PR cancels its earlier run. A PR from a fork runs only after a maintainer approves it. |
 | Any other PR or push to `main`, including a push that changes the paths in the row above and a PR that changes only Markdown in them | Nothing | None. Dispatch the build on the branch. |
-| `workflow_dispatch` of `build-and-release.yml` on a branch | The same jobs as a PR | The tarballs this run built. They are kept as artifacts for one day, and nothing is released. |
-| A pushed `v*` tag, or a dispatch on one | The same jobs, plus `release` | The tarballs this run built. `release` publishes them only if both build jobs passed, after checking each against the sha256 its build recorded after the smoke test. |
+| `workflow_dispatch` of `build-and-release.yml` on a branch | The same jobs as a PR, plus `benchmark` on `main` or when the dispatch sets `benchmark` | The tarballs this run built. They are kept as artifacts for one day, and nothing is released. |
+| `workflow_dispatch` of `benchmark.yml` with a build run's ID | `benchmark` | That run's tarballs, while its artifacts last |
+| A pushed `v*` tag, or a dispatch on one | The same jobs, plus `benchmark` and `release` | The tarballs this run built. `release` publishes them only if both build jobs passed, after checking each against the sha256 its build recorded after the smoke test. |
 
-The build job on each architecture, smoke test included, is the only gate: a release needs every check in the rows marked "yes" above to pass on both architectures. `example` and `httpfs-remote` are separate signals. The main README's [Releasing](../README.md#releasing) has the policy, the guard against overwriting a release, how to read `httpfs-remote`, and what making it required involves.
+The build job on each architecture, smoke test included, is the only gate: a release needs every check in the rows marked "yes" above to pass on both architectures. `example`, `httpfs-remote` and `benchmark` are separate signals. The main README's [Releasing](../README.md#releasing) has the policy, the guard against overwriting a release, how to read `httpfs-remote`, and what making it required involves.
 
 None of these states is a pass:
 
@@ -103,6 +106,7 @@ The local and the remote run read the same committed files with the same queries
 - **Only the remote run fails, exit 3:** the host or the network. Re-run it.
 - **Only the remote run fails, exit 1:** the base URL or token can't be used, or a query gave a wrong result over HTTPS only. The latter points at something only real HTTPS exercises, such as TLS, and is a bundle bug. [The HTTPS check](../README.md#the-https-check) says what that means for a release.
 - **`example` fails and the smoke test passes:** usually a `duckdb-go` version that doesn't match the bundle, or a registry that timed out while pulling an image. See [`example/AGENTS.md`](../example/AGENTS.md#ci).
+- **`benchmark` fails and the smoke test passes:** the status at the top of its summary says why; [`example/bench/README.md`](../example/bench/README.md#how-a-run-is-judged) explains each. A variant being slower is never a failure.
 - **`fixtures.yml` fails:** the fixtures' bytes or `fixtures.py`, not the bundle. See [`fixtures/README.md`](fixtures/README.md).
 
 `test/smoke.sh` exits 0 when every check that ran passed, 3 when only the remote run failed and every failure was in the host or the network, and 1 otherwise: a failure that points at the bundle, or a `DUCKDB_TEST_HTTPFS_BASE_URL` or `GITHUB_TOKEN` that can't be used.

@@ -44,7 +44,7 @@ PUBLIC = os.path.join(HERE, "public")
 
 # The DuckDB CLI that writes each fixture version, and the sha256 of its
 # release tarball per machine type.
-VERSIONS = {"v1": "v2.0.0"}
+VERSIONS = {"v1": "v2.0.0", "v2": "v2.0.0"}
 CLI_RELEASES = {
     "v2.0.0": {
         "x86_64": ("duckdb-cli-linux-amd64.tar.gz",

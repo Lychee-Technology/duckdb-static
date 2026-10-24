@@ -1,0 +1,47 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  DuckDB readiness benchmark. run.sh copies this template next to the stock/
+  and custom/ packages it assembles and runs sam local invoke on it without
+  sam build. Both functions share every setting but BENCH_VARIANT.
+
+Parameters:
+  Architecture:
+    Type: String
+    Default: arm64
+    AllowedValues:
+      - arm64
+      - x86_64
+  FixtureUrl:
+    Type: String
+    Description: >
+      The URL of v2/tiny.parquet on the fixture server run.sh starts, as the
+      Lambda containers on its Docker network reach it.
+
+Globals:
+  Function:
+    Runtime: provided.al2023
+    Handler: bootstrap
+    Timeout: 30
+    MemorySize: 512
+    Architectures:
+      - !Ref Architecture
+    Environment:
+      Variables:
+        BENCH_FIXTURE_URL: !Ref FixtureUrl
+
+Resources:
+  Stock:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: stock/
+      Environment:
+        Variables:
+          BENCH_VARIANT: stock
+  Custom:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: custom/
+      Environment:
+        Variables:
+          BENCH_VARIANT: custom
