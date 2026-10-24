@@ -60,6 +60,9 @@ jobs:
       - name: Test the summarizer
         run: python3 example/bench/test_summarize.py
 
+      - name: Test run.sh's cleanup after a failed setup
+        run: python3 example/bench/test_run.py
+
       - name: Download the bundle built in this run
         if: ${{ !inputs.build-run-id }}
         uses: actions/download-artifact@v7

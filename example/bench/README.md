@@ -30,7 +30,7 @@ Before any sample, `run.sh`:
 2. runs `fixtures.py verify --version v2` in another container on the same network. That checks name resolution and the connection from that network, `HEAD`, a full `GET` and three ranged `GET`s against the committed bytes and their sha256, and a `404` for a missing file;
 3. invokes each variant once as a warm-up, which must read the fixture over HTTP and return `720600`.
 
-A failure in any of these ends the run as `not run`, with the reason in the summary. Nothing falls back to the public host or to a local file. The server runs until the last sample, and afterwards `run.sh` checks that its container is still running and runs `verify` again. If either fails, the run is `invalid samples`. On exit, whatever the outcome, `run.sh` removes the server's container and the network.
+A failure in any of these ends the run as `not run`, with the reason in the summary. Nothing falls back to the public host or to a local file. The server runs until the last sample, and afterwards `run.sh` checks that its container is still running and runs `verify` again. If either fails, the run is `invalid samples`. On exit, whatever the outcome, `run.sh` removes the server's container and the network, including a container that a failed start left created.
 
 ## What is measured
 
@@ -101,7 +101,7 @@ SAMPLES=5 BENCH_WORK=$HOME/duckdb-bench \
 
 ## In CI
 
-`.github/workflows/benchmark.yml` runs `run.sh` on `ubuntu-24.04-arm` and `ubuntu-latest`, uploads `results/` as `benchmark-<arch>` (kept 90 days), and puts the summary in the job summary. `build-and-release.yml` calls it with the bundles the run just built: in runs on `main`, which today means a dispatch because pushes to `main` don't build, and on tags; on another branch only when the dispatch sets `benchmark`; and never on a PR. The dispatch input `benchmark-samples` sets the sample count. The release doesn't wait for it. To benchmark an earlier build run's bundles again, within a day of that run:
+`.github/workflows/benchmark.yml` runs `run.sh` on `ubuntu-24.04-arm` and `ubuntu-latest`, uploads `results/` as `benchmark-<arch>` (kept 90 days), and puts the summary in the job summary. `build-and-release.yml` calls it with the bundles the run just built: in runs on `main`, which today means a dispatch because pushes to `main` don't build, and on tags; on another branch only when the dispatch sets `benchmark`; and never on a PR. The dispatch input `benchmark-samples` sets the sample count. The release doesn't wait for it. Before `run.sh`, the job runs `test_summarize.py` and `test_run.py`, which need neither SAM nor a container engine; `test_run.py` runs `run.sh` with a stand-in for the `docker` command and checks that a failure while setting up the fixture server leaves no container or network behind. To benchmark an earlier build run's bundles again, within a day of that run:
 
 ```bash
 gh workflow run benchmark.yml -f build-run-id=<run id> -f samples=30

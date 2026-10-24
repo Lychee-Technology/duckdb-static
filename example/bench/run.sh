@@ -58,10 +58,18 @@ net=duckdb-bench-$(date +%s)-$$
 server=$net-fixtures
 fixture_url=http://$fixture_alias:8080/$fixture_version/$fixture_file
 manifest=$repo/test/fixtures/public/$fixture_version/manifest.json
+# Each *_created is set before the command that creates the resource, because
+# a failed docker run -d can leave its container created, and an interrupt can
+# come in between. The names are this run's own, so removing one that doesn't
+# exist is harmless. The container goes first: a network with a container on
+# it can't be removed. server_started is set only once the server runs, since
+# the docker logs of a container that never started would be empty and replace
+# the error in fixture-server.log.
 net_created=
+server_created=
 server_started=
 cleanup() {
-	if [ -n "$server_started" ]; then docker rm -f "$server" >/dev/null 2>&1 || true; fi
+	if [ -n "$server_created" ]; then docker rm -f "$server" >/dev/null 2>&1 || true; fi
 	if [ -n "$net_created" ]; then docker network rm "$net" >/dev/null 2>&1 || true; fi
 }
 trap cleanup EXIT
@@ -177,10 +185,11 @@ fixture=$repo/test/fixtures/public/$fixture_version/$fixture_file
 prov fixture "$(jq -n --arg url "$fixture_url" --arg path "$fixture_version/$fixture_file" \
 	--argjson bytes "$(stat -c %s "$fixture")" --arg sha256 "$(sha256sum "$fixture" | cut -d' ' -f1)" \
 	'{url: $url, path: $path, bytes: $bytes, sha256: $sha256}')"
+net_created=1
 if ! docker network create "$net" >"$results/fixture-server.log" 2>&1; then
 	setup_failed "not run" "Creating the Docker network $net for the fixture server failed; see fixture-server.log."
 fi
-net_created=1
+server_created=1
 if ! docker run -d --name "$server" --network "$net" --network-alias "$fixture_alias" \
 	--security-opt label=disable -v "$repo/test/fixtures:/fixtures:ro" "$fixture_image" \
 	python3 -I -u /fixtures/serve.py --root /fixtures/public --bind 0.0.0.0 --port 8080 --json-log - \
