@@ -217,9 +217,17 @@ class ServeTest(unittest.TestCase):
         finally:
             connection.close()
 
-    def records(self):
-        with open(self.json_log) as f:
-            return [json.loads(line) for line in f]
+    def records(self, count):
+        """Waits up to 10 s for count records in the JSON log, which the server
+        writes after each response, and returns them in the order their
+        requests started."""
+        deadline = time.monotonic() + 10
+        while True:
+            with open(self.json_log) as f:
+                records = [json.loads(line) for line in f if line.endswith("\n")]
+            if len(records) >= count or time.monotonic() > deadline:
+                return sorted(records, key=lambda r: r["time"])
+            time.sleep(0.01)
 
     def test_head_and_get(self):
         status, headers, body = self.request("HEAD", "/public/v2/tiny.parquet")
@@ -251,14 +259,18 @@ class ServeTest(unittest.TestCase):
             self.assertEqual(self.request("GET", path)[0], 404, path)
 
     def test_logs(self):
-        self.request("HEAD", "/public/v2/tiny.parquet?instance=abc", {"Authorization": "Bearer x"})
-        self.request("GET", "/public/v2/tiny.parquet?instance=abc", {"Range": "bytes=0-9"})
-        self.request("GET", "/missing.parquet")
-        with open(self.log) as f:
-            self.assertEqual(f.read(), "HEAD /public/v2/tiny.parquet?instance=abc Bearer\n"
-                                       "GET /public/v2/tiny.parquet?instance=abc -\n"
-                                       "GET /missing.parquet -\n")
-        records = self.records()
+        lines = []
+        for method, path, headers, auth in (
+                ("HEAD", "/public/v2/tiny.parquet?instance=abc", {"Authorization": "Bearer x"}, "Bearer"),
+                ("GET", "/public/v2/tiny.parquet?instance=abc", {"Range": "bytes=0-9"}, "-"),
+                ("GET", "/missing.parquet", {}, "-")):
+            self.request(method, path, headers)
+            # test/smoke.sh reads this log as soon as its client exits, so each
+            # request must be in it by the time its response has arrived.
+            lines.append(f"{method} {path} {auth}\n")
+            with open(self.log) as f:
+                self.assertEqual(f.read(), "".join(lines))
+        records = self.records(3)
         for record in records:
             self.assertGreaterEqual(record.pop("duration_ms"), 0)
             self.assertEqual(record.pop("client"), "127.0.0.1")

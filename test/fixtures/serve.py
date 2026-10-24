@@ -12,13 +12,18 @@ bytes for a Range of the form bytes=START- or bytes=START-END, 416 for a range
 that starts past the end of the file, and 404 for a missing file. The server
 speaks HTTP/1.0, so every request has a connection of its own.
 
-Each request is logged after its response is written, so logging adds nothing
-to the time the client waits for its bytes. --log appends a line
-"METHOD PATH AUTH" per request, where AUTH is the Authorization scheme or "-";
-it reopens the file for each line, so a caller may truncate it between runs.
---json-log writes one JSON object per request, "-" for standard output: the
-method, path, query, Range header, status, the body bytes sent, and the time
-from having read the request's headers to having written its body.
+--log appends a line "METHOD PATH AUTH" per request, where AUTH is the
+Authorization scheme or "-", before the response is written: a client that has
+its response finds the request logged, and one client's sequential requests in
+order. It reopens the file for each line, so a caller may truncate it between
+runs. --json-log writes one JSON object per request, "-" for standard output:
+the method, path, query, Range header, status, the body bytes sent, the time
+from having read the request's headers to having written its body, and as
+"time" the wall-clock time the headers were read. It is written after the
+response, so it adds nothing to the time the client waits for its bytes. A
+client can therefore have its response before the record exists, and records
+come in the order requests finished; sort them by "time" for the order they
+started.
 
 --port 0, the default, picks a free port. --port-file receives the port once
 the server is listening, and a line "serving on HOST:PORT" goes to standard
@@ -68,19 +73,20 @@ def make_handler(root, mounts, log, json_log):
             return os.path.join(root, *parts)
 
         def respond(self, send_body):
+            started_at = time.time()
             started = time.monotonic()
             path, _, query = self.path.partition("?")
             byte_range = self.headers.get("Range")
+            if log:
+                auth = self.headers.get("Authorization", "").split(" ", 1)[0] or "-"
+                with lock, open(log, "a") as f:
+                    f.write(f"{self.command} {self.path} {auth}\n")
             status, sent, aborted = self.send_file(self.resolve(path), byte_range, send_body)
             duration_ms = (time.monotonic() - started) * 1000
-            auth = self.headers.get("Authorization", "").split(" ", 1)[0] or "-"
-            with lock:
-                if log:
-                    with open(log, "a") as f:
-                        f.write(f"{self.command} {self.path} {auth}\n")
-                if json_log:
+            if json_log:
+                with lock:
                     record = {
-                        "time": time.time(),
+                        "time": started_at,
                         "client": self.client_address[0],
                         "method": self.command,
                         "path": path,
