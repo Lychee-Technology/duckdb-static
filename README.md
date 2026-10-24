@@ -95,7 +95,7 @@ The binary's output ends with `<n> checks passed`, and the script's with a summa
 The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
 
 ### The HTTPS check
-The `httpfs-remote` job runs `test/smoke.sh` on each architecture's tarball and header from the same run, in a fresh Amazon Linux 2023 container, with `DUCKDB_TEST_HTTPFS_BASE_URL` set to the repository variable of that name. A URL on a GitHub host must pin a full commit SHA on `raw.githubusercontent.com`, or the job fails before testing. How to read it:
+The `httpfs-remote` job runs `test/smoke.sh` on each architecture's tarball and header from the same run, in a fresh Amazon Linux 2023 container, with `DUCKDB_TEST_HTTPFS_BASE_URL` set to the repository variable of that name. The URL must be `https://`, because the job is the only check of TLS, and a URL on a GitHub host must also pin a full commit SHA on `raw.githubusercontent.com`, or the job fails before testing. How to read it:
 
 - **Skipped:** the variable was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
 - **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.

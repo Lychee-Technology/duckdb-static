@@ -193,13 +193,20 @@ jobs:
           DUCKDB_TEST_HTTPFS_BASE_URL: ${{ vars.DUCKDB_TEST_HTTPFS_BASE_URL }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          # test/smoke.sh takes http:// for local runs. Here it would let the
+          # job pass without testing TLS, which no other check does.
+          url=$DUCKDB_TEST_HTTPFS_BASE_URL
+          if [[ ${url,,} != https://* ]]; then
+            echo "::error title=Not HTTPS::DUCKDB_TEST_HTTPFS_BASE_URL must be an https:// URL: $url"
+            exit 1
+          fi
+
           # A branch name in place of the commit would follow new pushes, which
           # GitHub serves from a five-minute cache. See test/fixtures/README.md.
           # http://, capitals, a port, a trailing dot, raw.github.com and
           # github.com/<owner>/<repo>/raw/ all reach the same files, so any URL
           # on a GitHub host must be the canonical one. It is also the only
           # prefix test/smoke.c sends the token to.
-          url=$DUCKDB_TEST_HTTPFS_BASE_URL
           host=${url,,}
           host=${host#*://}
           host=${host%%[/?#]*}
