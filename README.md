@@ -84,6 +84,8 @@ On arm64, replace `amd64` with `arm64`. Artifacts are kept for one day. For a re
 - `did not report any passed checks`: the binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
 - `the server logged no ... request`: an httpfs check passed without reading from the local server.
 
+The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
+
 
 ## Contributing
 Contributions are welcome! Please feel free to submit a Pull Request.

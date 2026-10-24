@@ -1,0 +1,246 @@
+{
+  "version": "v1",
+  "generator": "test/fixtures/fixtures.py with the DuckDB v2.0.0 CLI",
+  "absent": "does-not-exist.parquet",
+  "total_size": 1108793,
+  "files": [
+    {
+      "path": "basic.parquet",
+      "size": 3385,
+      "sha256": "8d1bb2c25e5942cdbc6b46df670f004f5a4d15c8761b65ca66a95eb5d2e2e78e",
+      "rows": 100,
+      "row_groups": 1,
+      "schema": [
+        {
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "name",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "price",
+          "type": "DECIMAL(10,2)"
+        },
+        {
+          "name": "even",
+          "type": "BOOLEAN"
+        },
+        {
+          "name": "day",
+          "type": "DATE"
+        }
+      ]
+    },
+    {
+      "path": "multi_row_group.parquet",
+      "size": 1087892,
+      "sha256": "1e721aa2869ef9c2e87b8c18d55ada8a606bd4220715fc5cea89a86ceb90c718",
+      "rows": 50000,
+      "row_groups": 5,
+      "schema": [
+        {
+          "name": "id",
+          "type": "BIGINT"
+        },
+        {
+          "name": "bucket",
+          "type": "INTEGER"
+        },
+        {
+          "name": "payload",
+          "type": "VARCHAR"
+        }
+      ]
+    },
+    {
+      "path": "nested.parquet",
+      "size": 3753,
+      "sha256": "790190f5d29cbc2fe4d625418a02d71afbb2076c7bd98a10f7f7f1db2d973c70",
+      "rows": 100,
+      "row_groups": 1,
+      "schema": [
+        {
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "l",
+          "type": "INTEGER[]"
+        },
+        {
+          "name": "st",
+          "type": "STRUCT(\"name\" VARCHAR, tags VARCHAR[])"
+        },
+        {
+          "name": "m",
+          "type": "MAP(VARCHAR, INTEGER)"
+        }
+      ]
+    },
+    {
+      "path": "nullable.parquet",
+      "size": 13763,
+      "sha256": "360041d95e63b2163a9a084186d8d70e0ece837d040e5f59208b5d402916785d",
+      "rows": 1000,
+      "row_groups": 1,
+      "schema": [
+        {
+          "name": "id",
+          "type": "INTEGER"
+        },
+        {
+          "name": "a",
+          "type": "INTEGER"
+        },
+        {
+          "name": "s",
+          "type": "VARCHAR"
+        },
+        {
+          "name": "never_set",
+          "type": "INTEGER"
+        }
+      ]
+    }
+  ],
+  "queries": [
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/basic.parquet')",
+      "expected": "100"
+    },
+    {
+      "sql": "SELECT typeof(id) || ',' || typeof(name) || ',' || typeof(price) || ',' || typeof(even) || ',' || typeof(day)\nFROM read_parquet('{dir}/basic.parquet') LIMIT 1",
+      "expected": "INTEGER,VARCHAR,DECIMAL(10,2),BOOLEAN,DATE"
+    },
+    {
+      "sql": "SELECT sum(id) FROM read_parquet('{dir}/basic.parquet')",
+      "expected": "5050"
+    },
+    {
+      "sql": "SELECT name FROM read_parquet('{dir}/basic.parquet') WHERE id = 42",
+      "expected": "item 42"
+    },
+    {
+      "sql": "SELECT sum(price) FROM read_parquet('{dir}/basic.parquet')",
+      "expected": "6312.50"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/basic.parquet') WHERE even",
+      "expected": "50"
+    },
+    {
+      "sql": "SELECT max(day) FROM read_parquet('{dir}/basic.parquet')",
+      "expected": "2024-04-10"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/nullable.parquet')",
+      "expected": "1000"
+    },
+    {
+      "sql": "SELECT count(a) FROM read_parquet('{dir}/nullable.parquet')",
+      "expected": "667"
+    },
+    {
+      "sql": "SELECT count(s) FROM read_parquet('{dir}/nullable.parquet')",
+      "expected": "800"
+    },
+    {
+      "sql": "SELECT count(never_set) FROM read_parquet('{dir}/nullable.parquet')",
+      "expected": "0"
+    },
+    {
+      "sql": "SELECT sum(a) FROM read_parquet('{dir}/nullable.parquet')",
+      "expected": "333667"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/nullable.parquet') WHERE a IS NULL AND s IS NULL",
+      "expected": "66"
+    },
+    {
+      "sql": "SELECT coalesce(s, 'missing') FROM read_parquet('{dir}/nullable.parquet') WHERE id = 10",
+      "expected": "missing"
+    },
+    {
+      "sql": "SELECT count(l) FROM read_parquet('{dir}/nested.parquet')",
+      "expected": "90"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/nested.parquet') WHERE len(l) = 0",
+      "expected": "10"
+    },
+    {
+      "sql": "SELECT sum(len(l)) FROM read_parquet('{dir}/nested.parquet')",
+      "expected": "240"
+    },
+    {
+      "sql": "SELECT count(x) FROM (SELECT unnest(l) AS x FROM read_parquet('{dir}/nested.parquet'))",
+      "expected": "160"
+    },
+    {
+      "sql": "SELECT sum(x) FROM (SELECT unnest(l) AS x FROM read_parquet('{dir}/nested.parquet'))",
+      "expected": "12000"
+    },
+    {
+      "sql": "SELECT l FROM read_parquet('{dir}/nested.parquet') WHERE id = 3",
+      "expected": "[3, NULL, 6]"
+    },
+    {
+      "sql": "SELECT count(st) FROM read_parquet('{dir}/nested.parquet')",
+      "expected": "86"
+    },
+    {
+      "sql": "SELECT st.name FROM read_parquet('{dir}/nested.parquet') WHERE id = 3",
+      "expected": "n3"
+    },
+    {
+      "sql": "SELECT array_to_string(st.tags, ',') FROM read_parquet('{dir}/nested.parquet') WHERE id = 4",
+      "expected": "t1,all"
+    },
+    {
+      "sql": "SELECT st IS NULL FROM read_parquet('{dir}/nested.parquet') WHERE id = 7",
+      "expected": "true"
+    },
+    {
+      "sql": "SELECT sum(m['k']) FROM read_parquet('{dir}/nested.parquet')",
+      "expected": "5050"
+    },
+    {
+      "sql": "SELECT m['none'] IS NULL AND cardinality(m) = 2 FROM read_parquet('{dir}/nested.parquet') WHERE id = 42",
+      "expected": "true"
+    },
+    {
+      "sql": "SELECT count(DISTINCT row_group_id) FROM parquet_metadata('{dir}/multi_row_group.parquet')",
+      "expected": "5"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/multi_row_group.parquet')",
+      "expected": "50000"
+    },
+    {
+      "sql": "SELECT sum(id) FROM read_parquet('{dir}/multi_row_group.parquet')",
+      "expected": "1249975000"
+    },
+    {
+      "sql": "SELECT sum(bucket) FROM read_parquet('{dir}/multi_row_group.parquet')",
+      "expected": "2475000"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/multi_row_group.parquet') WHERE id BETWEEN 30000 AND 30009",
+      "expected": "10"
+    },
+    {
+      "sql": "SELECT count(*) FROM read_parquet('{dir}/multi_row_group.parquet') WHERE bucket = 7",
+      "expected": "500"
+    },
+    {
+      "sql": "SELECT payload FROM read_parquet('{dir}/multi_row_group.parquet') WHERE id = 10240",
+      "expected": "row 10240"
+    },
+    {
+      "sql": "SELECT payload FROM read_parquet('{dir}/multi_row_group.parquet') WHERE id = 49999",
+      "expected": "row 49999"
+    }
+  ]
+}
