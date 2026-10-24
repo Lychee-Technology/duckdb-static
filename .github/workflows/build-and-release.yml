@@ -134,6 +134,112 @@ jobs:
           path: include/duckdb.h
           retention-days: 1
 
+  # Runs the fixture queries over real HTTPS on the bundles above, in a fresh
+  # Amazon Linux 2023 container, against the copy of test/fixtures/public at the
+  # repository variable DUCKDB_TEST_HTTPFS_BASE_URL. Without the variable the
+  # job shows as skipped. The release doesn't wait for it, because GitHub can
+  # fail or rate-limit the reads while the bundle is fine.
+  httpfs-remote:
+    name: httpfs remote (${{ matrix.arch }})
+    needs: build
+    if: vars.DUCKDB_TEST_HTTPFS_BASE_URL != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: 'ubuntu-24.04-arm'
+          - arch: amd64
+            runner: 'ubuntu-latest'
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    container:
+      image: public.ecr.aws/amazonlinux/amazonlinux:2023
+
+    env:
+      TARBALL: libduckdb_bundle-${{ matrix.arch }}-linux-httpfs-parquet.tar.xz
+
+    steps:
+      - name: Install tools
+        run: dnf install -y git gcc14 gcc14-c++ libcurl-devel openssl-devel binutils findutils tar xz python3
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download the bundle built in this run
+        uses: actions/download-artifact@v7
+        with:
+          name: libduckdb-${{ matrix.arch }}-httpfs-parquet
+
+      # The tarball holds no header, so the test compiles against the one the
+      # build uploaded from its DuckDB checkout.
+      - name: Download the header built in this run
+        uses: actions/download-artifact@v7
+        with:
+          name: duckdb-header-${{ matrix.arch }}
+          path: include
+
+      # The token reaches this step only. test/smoke.sh sends it only to this
+      # repository's files on raw.githubusercontent.com and never prints it.
+      - name: Smoke-test over HTTPS
+        shell: bash
+        env:
+          CC: /usr/bin/gcc14-gcc
+          DUCKDB_TEST_HTTPFS_BASE_URL: ${{ vars.DUCKDB_TEST_HTTPFS_BASE_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          # A branch name in place of the commit would follow new pushes, which
+          # GitHub serves from a five-minute cache. See test/fixtures/README.md.
+          # http://, capitals, a port, a trailing dot, raw.github.com and
+          # github.com/<owner>/<repo>/raw/ all reach the same files, so any URL
+          # on a GitHub host must be the canonical one. It is also the only
+          # prefix test/smoke.c sends the token to.
+          url=$DUCKDB_TEST_HTTPFS_BASE_URL
+          host=${url,,}
+          host=${host#*://}
+          host=${host%%[/?#]*}
+          host=${host##*@}
+          host=${host%:*}
+          host=${host%.}
+          github='(^|\.)(github\.com|githubusercontent\.com)$'
+          pinned='^https://raw\.githubusercontent\.com/[^/]+/[^/]+/[0-9a-f]{40}/'
+          if [[ $host =~ $github && ! $url =~ $pinned ]]; then
+            echo "::error title=Unpinned base URL::DUCKDB_TEST_HTTPFS_BASE_URL on GitHub must be https://raw.githubusercontent.com/<owner>/<repo>/<full commit SHA>/..., not a branch, a tag or another spelling: $url"
+            exit 1
+          fi
+
+          source ./duckdb_version
+          status=0
+          test/smoke.sh "$TARBALL" "$DUCKDB_VER" include | tee "$RUNNER_TEMP/smoke.log" || status=$?
+
+          summary=$(sed -n '/^== summary$/,$p' "$RUNNER_TEMP/smoke.log" | tail -n +2)
+          if [ -z "$summary" ]; then
+            summary="test/smoke.sh exited $status before its summary, see the log"
+          fi
+          {
+            echo "### httpfs remote (${{ matrix.arch }})"
+            echo "Tested: \`$(sha256sum "$TARBALL")\`"
+            echo '```'
+            echo "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Reported apart from other failures, so the job summaries show how
+          # often GitHub's rate limit stops the run.
+          if grep -q '^rate-limited:' "$RUNNER_TEMP/smoke.log"; then
+            echo "::warning title=Rate-limited::The fixture host answered HTTP 429 on ${{ matrix.arch }}."
+          fi
+          case $status in
+          0) ;;
+          3) echo "::error title=Host or network failure::Only the remote run failed, in the host or the network rather than the bundle. See the FAIL lines labeled host: or network:." ;;
+          *) echo "::error title=Bundle or configuration failure::A failed check points at the bundle, or the remote run's configuration can't be used. See the FAIL lines." ;;
+          esac
+          exit $status
+
   release:
     needs: build
     runs-on: ubuntu-latest
