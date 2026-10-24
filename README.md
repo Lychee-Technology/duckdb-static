@@ -91,7 +91,7 @@ A run for a `v*` tag publishes its release only if the build job passed on both 
 Three jobs run alongside the release, and the release waits for none of them:
 
 - `example` builds and invokes the Go Lambda. A DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
-- `httpfs-remote` runs the fixture queries over HTTPS. It stays a separate signal until the fixture hosting has proven reliable; see below.
+- `httpfs-remote` runs the fixture queries over HTTPS. It stays a separate signal; see below.
 - `benchmark` times DuckDB's readiness and a first Parquet query over HTTP, against a local fixture server, with the bundle and with `duckdb-go`'s stock library, under SAM. It measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).
 
 A dispatch on a tag that already has a release, including a draft, fails in the release job and leaves the release as it is. To replace its assets, dispatch with `overwrite-release`:
@@ -110,7 +110,7 @@ How to read `httpfs-remote`:
 - **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
 - **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
 
-Making `httpfs-remote` required is a separate decision, to be recorded in [#28](https://github.com/Lychee-Technology/duckdb-static/issues/28). It needs evidence that GitHub serves the fixtures reliably: the job's summaries from release and dispatch runs on both architectures, including how often they show host failures or `Rate-limited`. The change that makes it required has to:
+The release doesn't wait for `httpfs-remote`, as decided in [#28](https://github.com/Lychee-Technology/duckdb-static/issues/28) on 2026-10-24. A bundle that fails only over real HTTPS can therefore still be published, with the failure showing in its run. If that decision is revisited, the change that makes the job required has to:
 
 - add `httpfs-remote` to the release job's `needs`;
 - make the job fail, not skip, when the variable is unset. A job that needs a skipped job is skipped too, so an unset variable would skip the release with no error saying why;
