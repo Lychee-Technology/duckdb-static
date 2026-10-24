@@ -20,7 +20,7 @@ Releases `v1.5.3_1` through `v1.5.6_0` have two assets and nothing else:
 
 Earlier releases, `v1.5.1_1` through `v1.5.2_1`, have six: these two plus `-lance` and `-vortex` variants of each. Commit `6a8f3aa` removed those flavors, and this branch builds only `httpfs-parquet`.
 
-There is no header and no checksum file. Consumers take `duckdb.h` from DuckDB v1.5.6 or from `duckdb-go-bindings` v0.10506.0, whose `include/duckdb.h` is byte-identical to it. A program linked with `-lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl` needs only `libstdc++`, `libm`, `libcurl`, `libssl`, `libcrypto`, `libgcc_s`, `libc` and, on amd64, the dynamic loader at run time, the same allowlist main's smoke test enforces.
+There is no header and no checksum file. Consumers take `duckdb.h` from DuckDB v1.5.6 or from `duckdb-go-bindings` v0.10506.0, whose `include/duckdb.h` is byte-identical to it. A program linked with `-lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl` needs only `libstdc++`, `libm`, `libcurl`, `libssl`, `libcrypto`, `libgcc_s`, `libc` and the dynamic loader at run time, the same allowlist main's smoke test enforces. The loader (`ld-linux-x86-64.so.2` on amd64, `ld-linux-aarch64.so.1` on arm64) is the binary's ELF interpreter on both arches, but only amd64 also lists it among the `DT_NEEDED` entries the smoke test reads.
 
 Main's 2.0 releases add `duckdb.h`, `duckdb_static_extension.h` and a `SHA256SUMS` asset. Whether 1.5.x releases add anything is #39's decision. This file only records the current contract.
 
