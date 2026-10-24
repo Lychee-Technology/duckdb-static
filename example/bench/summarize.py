@@ -73,8 +73,8 @@ def load_jsonl(path):
 
 def load_requests(path):
     """Returns the fixture server's requests by the instance ID in their query
-    string. Lines that aren't JSON objects, such as a container runtime's
-    notices, are skipped."""
+    string, each instance's in the order they started. Lines that aren't JSON
+    objects, such as a container runtime's notices, are skipped."""
     by_instance = collections.defaultdict(list)
     if not path.exists():
         return by_instance
@@ -88,6 +88,10 @@ def load_requests(path):
         instance = urllib.parse.parse_qs(request.get("query") or "").get("instance", [None])[0]
         if instance:
             by_instance[instance].append(request)
+    # The server logs a request when it has answered it, so a request can be
+    # logged after the one its client sent next.
+    for requests in by_instance.values():
+        requests.sort(key=lambda r: r["time"] if is_number(r.get("time")) else 0)
     return by_instance
 
 

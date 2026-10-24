@@ -160,6 +160,20 @@ class SummarizeTest(unittest.TestCase):
                 "samples": 4,
             }])
 
+    def test_http_sequence_is_in_start_order(self):
+        # The server logs each request after answering it, so the GET's record
+        # can come first; its "time" says when the request started.
+        for i, q in enumerate(self.requests):
+            q["time"] = 1000.0 + i
+        for i in range(0, len(self.requests), 2):
+            self.requests[i], self.requests[i + 1] = self.requests[i + 1], self.requests[i]
+        summary = self.assert_status("valid")
+        for v in summarize.VARIANTS:
+            self.assertEqual(summary["http"][v]["sequences"], [{
+                "requests": ["HEAD - 200 0", f"GET bytes=0-{FIXTURE['size'] - 1} 206 {FIXTURE['size']}"],
+                "samples": 4,
+            }])
+
     def test_other_lines_and_requests_are_ignored(self):
         # fixtures.py verify's requests carry no instance ID, and a container
         # runtime may add lines of its own to the log.
