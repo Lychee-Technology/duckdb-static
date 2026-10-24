@@ -11,12 +11,14 @@
 
 ## What a 1.5.x release contains
 
-Every 1.5.x release up to `v1.5.6_0` has two assets and nothing else:
+Releases `v1.5.3_1` through `v1.5.6_0` have two assets and nothing else:
 
 | Asset | Contents | sha256 at `v1.5.6_0` |
 |---|---|---|
 | `libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz` | `./libduckdb_bundle.a` only (155 MB) | `e33925ea10dd2a5ba99e087828c941ebdb57863d4af76f5099364fe84661ee75` |
 | `libduckdb_bundle-arm64-linux-httpfs-parquet.tar.xz` | `./libduckdb_bundle.a` only (140 MB) | `20340f24d04681286ad2edc4c06c130526be12b49499385c3d112ff103c8bec8` |
+
+Earlier releases, `v1.5.1_1` through `v1.5.2_1`, have six: these two plus `-lance` and `-vortex` variants of each. Commit `6a8f3aa` removed those flavors, and this branch builds only `httpfs-parquet`.
 
 There is no header and no checksum file. Consumers take `duckdb.h` from DuckDB v1.5.6 or from `duckdb-go-bindings` v0.10506.0, whose `include/duckdb.h` is byte-identical to it. A program linked with `-lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl` needs only `libstdc++`, `libm`, `libcurl`, `libssl`, `libcrypto`, `libgcc_s`, `libc` and, on amd64, the dynamic loader at run time, the same allowlist main's smoke test enforces.
 
