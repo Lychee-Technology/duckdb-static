@@ -2,7 +2,7 @@
 
 Small Parquet files with known contents, for testing httpfs reads of a real HTTPS endpoint. The files are committed here, and GitHub serves them over HTTPS from `raw.githubusercontent.com`, so a test can run the same queries against a local server and against GitHub. A failure on GitHub alone points at the host or the network, and a failure on both points at the bundle. On `main`, `test/smoke.sh` runs the v1 queries against its local server, and against GitHub as well when `DUCKDB_TEST_HTTPFS_BASE_URL` is set, and the benchmark in `example/bench/` reads the v2 file over HTTP from the same local server, `serve.py`, and never from GitHub.
 
-On `duckdb-v1.5.x`, everything in this directory is the same as on `main`, apart from this file. Neither the smoke test's fixture queries nor the benchmark has come over yet, so what this file says about them describes `main`. [`docs/backport-1.5.x.md`](../../docs/backport-1.5.x.md) says which issue brings each over.
+On `duckdb-v1.5.x`, everything in this directory is the same as on `main`, apart from this file. The smoke test runs the v1 queries as on `main`, locally and against `DUCKDB_TEST_HTTPFS_BASE_URL`. The benchmark hasn't come over yet, so what this file says about it and `example/bench/` describes `main`. [`docs/backport-1.5.x.md`](../../docs/backport-1.5.x.md) says which issue brings it over.
 
 | Path | What it is |
 |---|---|

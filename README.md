@@ -40,8 +40,9 @@ This bundle is built on **Amazon Linux 2023** and comes pre-packaged with the mo
 This repository utilizes a **GitHub Actions** workflow to ensure reliability and transparency:
 1.  **Trigger:** workflow triggers automatically whenever a new tag is pushed.
 2.  **Build:** Compiles a static bundle of DuckDB + Extensions on Amazon Linux 2023.
-3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that those checks left no other extension installed or loaded. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded.
+3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It also checks core SQL, nested JSON, local Parquet and a reopened database file, that those checks left no other extension installed or loaded, and the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded.
 4.  **Release:** Automatically generates `.tar.xz` files and publishes them to GitHub Releases.
+5.  **Test over HTTPS:** Alongside the release, the `httpfs-remote` job runs the fixture queries on each new bundle against a public HTTPS copy of the fixtures. The release doesn't wait for it; see [The HTTPS check](#the-https-check).
 
 ### Installation / Usage
 You don't need to build from source. simply:
@@ -73,18 +74,35 @@ docker run --rm -v "$PWD":/repo:ro -v "$bundle_dir":/bundle:ro -w /repo \
     CC=gcc14-gcc test/smoke.sh /bundle/libduckdb-amd64-httpfs-parquet/libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz "$DUCKDB_VER" /bundle/duckdb-header-amd64'
 ```
 
-On arm64, replace `amd64` with `arm64`. Artifacts are kept for one day. For a released tarball, pass the directory of DuckDB v1.5.6's `src/include` instead. It ends with `<n> checks passed`. Otherwise, a line starting with `FAIL` says what went wrong:
+On arm64, replace `amd64` with `arm64`. Artifacts are kept for one day. For a released tarball, pass the directory of DuckDB v1.5.6's `src/include` instead.
+
+To also run the fixture queries over HTTPS, pass `-e DUCKDB_TEST_HTTPFS_BASE_URL=<base URL>` to `docker run`, with a base URL as described in [`test/fixtures/README.md`](test/fixtures/README.md#hosting). The script first checks the host with `fixtures.py verify`, then runs the queries against it. Unset, the remote run is reported as not configured, which isn't a pass. `GITHUB_TOKEN`, when set, is sent only to this repository's files on `raw.githubusercontent.com` and never printed.
+
+The binary's output ends with `<n> checks passed`, and the script's with a summary: `local:` and `remote:` lines, plus a `rate-limited:` line when the host answered 429. It exits 0 if everything that ran passed, 3 if only the remote run failed and every failure was in the host or the network, and 1 otherwise. A line starting with `FAIL` says what went wrong:
 
 - `has no duckdb.h`: the third argument isn't the directory holding the header.
 - `is not a readable .tar.xz` or `the tarball holds`: the tarball is damaged, or the build packaged the wrong files.
 - `libduckdb_bundle.a is built for`: the tarball is for the other architecture, or the archive mixes objects from two.
 - `doesn't build against`: the header doesn't match the archive, or the archive lacks a symbol the program links, such as a dropped extension member. The compiler's error above it names the cause.
 - `needs <library>, which isn't on smoke.sh's allowlist`: consumers would need a new shared library at run time. If that is intended, add the library to the allowlist in `test/smoke.sh` and to [Linking](#linking).
-- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows.
+- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows. An error labeled `[host: ...]` or `[network: ...]` came from the HTTP server or the network: an HTTP error status, a host that ignores byte ranges, or a DNS, TLS, connection or timeout failure. In the remote run, the remaining fixture checks then stop.
 - `did not report any passed checks`: the binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
-- `the server logged no ... request`: an httpfs check passed without reading from the local server.
+- `the server logged no ... request`: an httpfs check passed without reading from the local server, or the fixtures' bearer token wasn't sent where it should have been.
+- `read the fixtures without the token scoped to them` or `sent the fixtures' token outside its scope`: the `TYPE http` secret's `SCOPE` didn't limit the token to the fixtures. The request lines above it are the ones at fault.
+- `GITHUB_TOKEN has a quote, a space or a control character`: the remote run didn't start, because the token can't go into an SQL string and an HTTP header.
+- Lines from `fixtures.py verify` before `== smoke --remote`: the host doesn't serve the committed fixtures with working byte ranges, so no query ran against it. [`test/fixtures/README.md`](test/fixtures/README.md#verifying-the-host) explains them.
 
 The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
+
+### The HTTPS check
+The `httpfs-remote` job runs `test/smoke.sh` on each architecture's tarball and header from the same run, in a fresh Amazon Linux 2023 container, with `DUCKDB_TEST_HTTPFS_BASE_URL` set to the repository variable of that name. A URL on a GitHub host must pin a full commit SHA on `raw.githubusercontent.com`, or the job fails before testing. How to read it:
+
+- **Skipped:** the variable was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
+- **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.
+- **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
+- **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug.
+
+The release doesn't wait for `httpfs-remote`, as `main` decided in [#28](https://github.com/Lychee-Technology/duckdb-static/issues/28), and this branch keeps that policy. A bundle that fails only over real HTTPS can therefore still be published, with the failure showing in its run. Making the job required would mean adding it to the release job's `needs`, and making it fail rather than skip when the variable is unset, because a job that needs a skipped job is skipped too.
 
 
 ## Contributing
