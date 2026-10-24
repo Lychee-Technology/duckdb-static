@@ -1,0 +1,42 @@
+# Regenerates the committed Parquet fixtures on native arm64 and x86_64 runners
+# and fails unless the bytes match, and runs fixtures.py's tests. It doesn't
+# read the public fixture site. See test/fixtures/README.md.
+name: Fixtures
+
+on:
+  pull_request:
+    paths:
+      - 'test/fixtures/**'
+      - '.github/workflows/fixtures.yml'
+  push:
+    branches: [duckdb-v1.5.x]
+    paths:
+      - 'test/fixtures/**'
+      - '.github/workflows/fixtures.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            host: arm64
+          - runner: ubuntu-latest
+            host: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Regenerate and compare
+        run: python3 test/fixtures/fixtures.py check
+
+      - name: Test fixtures.py
+        run: python3 test/fixtures/test_fixtures.py -v

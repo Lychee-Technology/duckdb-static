@@ -40,7 +40,7 @@ This bundle is built on **Amazon Linux 2023** and comes pre-packaged with the mo
 This repository utilizes a **GitHub Actions** workflow to ensure reliability and transparency:
 1.  **Trigger:** workflow triggers automatically whenever a new tag is pushed.
 2.  **Build:** Compiles a static bundle of DuckDB + Extensions on Amazon Linux 2023.
-3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded.
+3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It also checks core SQL, nested JSON, local Parquet and a reopened database file, and that those checks left no other extension installed or loaded. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded.
 4.  **Release:** Automatically generates `.tar.xz` files and publishes them to GitHub Releases.
 
 ### Installation / Usage
@@ -83,6 +83,8 @@ On arm64, replace `amd64` with `arm64`. Artifacts are kept for one day. For a re
 - `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows.
 - `did not report any passed checks`: the binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
 - `the server logged no ... request`: an httpfs check passed without reading from the local server.
+
+The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
 
 
 ## Contributing
