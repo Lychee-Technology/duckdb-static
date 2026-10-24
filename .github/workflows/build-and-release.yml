@@ -104,11 +104,34 @@ jobs:
           ls -lh /tmp/pkg/
           tar -cJf libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz -C /tmp/pkg .
 
+      # The tarball ships only the archive, so the smoke test compiles against
+      # the duckdb.h of the DuckDB checkout the bundle was built from.
+      - name: Collect header
+        run: |
+          mkdir -p include
+          cp duckdb/src/include/duckdb.h include/
+
+      - name: Smoke-test bundle
+        env:
+          CC: /usr/bin/gcc14-gcc
+        run: |
+          test/smoke.sh libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz "$DUCKDB_VER" include
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: libduckdb-${{ matrix.arch }}-${{ matrix.flavor }}
           path: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+          retention-days: 1
+
+      # Lets test/smoke.sh run on this build's tarball without a DuckDB
+      # checkout. Not named libduckdb-*, because the release job publishes
+      # every artifact matching that pattern.
+      - name: Upload header
+        uses: actions/upload-artifact@v7
+        with:
+          name: duckdb-header-${{ matrix.arch }}
+          path: include/duckdb.h
           retention-days: 1
 
   release:
