@@ -2,21 +2,30 @@
 
 How long DuckDB takes, inside a fresh Lambda process, to open a database, make the bundle's extensions ready and answer a first query on a small Parquet file over HTTP. The benchmark compares duckdb-go's stock prebuilt library with this repository's bundle. It characterizes both; it doesn't set out to show that the bundle is faster, and a run where it isn't is still a valid run. The decisions behind it are recorded in [#33](https://github.com/Lychee-Technology/duckdb-static/issues/33).
 
+This is the `duckdb-v1.5.x` branch's version, for DuckDB 1.5.6. [#43](https://github.com/Lychee-Technology/duckdb-static/issues/43) ported it from `main`, where it benchmarks DuckDB 2.0. The stock library, how DuckDB 1.5.6 makes extensions ready, and what identifies a DuckDB build differ, as described below.
+
 It runs under `sam local invoke` on `provided.al2023`, on a GitHub-hosted runner or your own machine, against a fixture server that `run.sh` starts on the same host. That is SAM's emulator and a local network, not managed AWS Lambda or the internet, so none of the numbers is a Lambda cold-start duration or a measure of public network performance.
 
 ## The two variants
 
-Both are built from `main.go` by one Dockerfile, with the `duckdb-go` version in `example/go.mod`, the same Go and compiler versions and the same Go build flags. In both, DuckDB is linked statically into the Go executable. They run with the same SAM template settings (512 MB, 30 s), the same fixture URL and the same SQL.
+Both are built from `main.go` by one Dockerfile, with the `duckdb-go` version in `example/go.mod`, the same Go and compiler versions and the same Go build flags. In both, DuckDB is linked statically into the Go executable. `run.sh` checks that from each executable's `NEEDED` entries and reports `incomparable` if either needs a `libduckdb` shared library. They run with the same SAM template settings (512 MB, 30 s), the same fixture URL and the same SQL.
 
 | | Stock | Custom |
 |---|---|---|
-| DuckDB library | duckdb-go's prebuilt `go.duckdb.org/libduckdb/linux-<arch>`, built by DuckDB | The bundle under test, linked with `-tags=duckdb_use_static_lib` |
-| Built-in extensions | `core_functions`, `parquet`, `json`, `icu`, plus `tpch`, `tpcds`, `autocomplete` and DuckDB's `httplib` and loadable-extension support | `core_functions`, `parquet`, `json`, `icu`, `httpfs` |
+| DuckDB library | duckdb-go-bindings' prebuilt static archives, module `github.com/duckdb/duckdb-go-bindings/lib/linux-<arch>` at the version `example/go.mod` requires (v0.10506.0, DuckDB 1.5.6), linked with no build tag and `-rdynamic` | The bundle under test, linked with `-tags=duckdb_use_static_lib` |
+| Built-in extensions | `core_functions`, `parquet`, `json`, `icu`, plus `tpch`, `tpcds` and `autocomplete`, and support for loading extensions from files | `core_functions`, `parquet`, `json`, `icu`, `httpfs` |
 | `httpfs` | DuckDB's own build for the same version, downloaded from `extensions.duckdb.org` before any sample and packaged in `ext/` | Built in |
 
 The stock library has no `httpfs`, so it is the one extension whose readiness differs. Both variants open DuckDB with `autoinstall_known_extensions` and `autoload_known_extensions` off and `extension_directory` in the package, so nothing is downloaded or loaded behind the program's back. Both then run `LOAD` for each of the five extensions. For an extension that is built in, `LOAD` does nothing more; in the stock variant, `LOAD httpfs` reads the packaged file from local disk. Each sample reports every extension's `install_mode` and `install_path`, and the run is `incomparable` unless the custom variant's five are all `STATICALLY_LINKED` and the stock variant's `httpfs` came from the package's `ext/`.
 
-If the stock library isn't the DuckDB version in `duckdb_version`, or DuckDB hasn't published `httpfs` for it, the run reports `incomparable` rather than comparing different work.
+DuckDB 1.5.6 has no registration step: opening a database loads the extensions linked into the executable. So `duckdb_open_or_connect_ms` includes loading the custom variant's five extensions and the stock variant's `core_functions`, `parquet`, `json`, `icu` and `autocomplete`. The stock library links `tpch` and `tpcds` too, but opening didn't load them in the local run. `extension_ready_ms` is then almost all the stock variant's `LOAD httpfs`: in that run the median was 14.8 ms for stock and 0.8 ms for custom. Each sample also reports the extensions loaded beyond the five, and the summary lists them. On `main`, DuckDB 2.0 registers the extensions before `main` and the split between the metrics differs, so the two branches' numbers don't compare stage by stage.
+
+The stock module ships no `provenance.json`, the file in which `main`'s stock library names its DuckDB version and source. `run.sh` takes the module's path, version and checksum from the stock executable's Go build info instead, and records the sha256 of each archive in it and that it has no `provenance.json`. The run reports `incomparable`, rather than comparing different work, if:
+
+- the module version isn't the DuckDB version in `duckdb_version` (v0.10506.0 is DuckDB 1.5.6);
+- the stock executable doesn't link that module, or the custom one does;
+- DuckDB hasn't published `httpfs` for that version;
+- the samples report another DuckDB version.
 
 ## The fixture and its server
 
@@ -47,19 +56,21 @@ Each sample is one invocation of a new process in a new container. The function 
 
 The timed interval covers no build, no extension download, no container or server start-up, no fixture generation and no image pull; all of those happen before the first sample. It does include every HTTP request the first query makes to the fixture server, on purpose. So `first_http_parquet_query_ms` mixes httpfs's first use (setting up its HTTP client, for one), the requests themselves and the network between two containers, and the query's execution. A difference in it, or in the total, isn't all extension readiness; `extension_ready_ms` is the stage that isolates what built-in extensions change.
 
-**Secondary:** `bootstrap_to_main_ms`. The function's `bootstrap` is a small C launcher (`launcher/launcher.c`). It reads `CLOCK_MONOTONIC`, passes the reading on, and execs the Go program in the same process, which reads the same clock as the first statement of `main`. The interval covers loading the executable and its shared libraries, C++ static constructors, the Go runtime, and package initialization, which includes duckdb-go registering the static extensions. The primary timers start after it, inside the handler, so they can't see that registration. Nor does this interval isolate it: it isn't any one of these steps, and it isn't Lambda's `Init Duration`, because it misses everything before the launcher's first instruction, including the container and the runtime emulator starting. Never add it to the primary total.
+**Secondary:** `bootstrap_to_main_ms`. The function's `bootstrap` is a small C launcher (`launcher/launcher.c`). It reads `CLOCK_MONOTONIC`, passes the reading on, and execs the Go program in the same process, which reads the same clock as the first statement of `main`. The interval covers loading the executable and its shared libraries, C++ static constructors, the Go runtime, and package initialization. DuckDB 1.5.6 registers nothing here; its extensions load in the first primary metric. The interval isn't any one of these steps, and it isn't Lambda's `Init Duration`, because it misses everything before the launcher's first instruction, including the container and the runtime emulator starting. Never add it to the primary total.
 
 **HTTP requests**, from the fixture server's log rather than from the function, so that the timed path carries no extra instrumentation and both variants carry the same. The function adds its random instance ID to the URL as the query parameter `instance`, before its clock starts; the server ignores the query string when it serves the file and logs it with each request's method, `Range`, status, body bytes and the time it spent. The summary gives, per variant, the requests, bytes and server time per sample and the most common request sequence. A sample is rejected when the server logged no request from its process, a request for another file, a status other than `200` or `206`, or no fixture bytes sent. Nothing limits how many requests a sample makes or how long they take.
 
-In the first local run, on amd64 with Podman, both variants made the same three requests per sample: a `HEAD`, one ranged `GET` of the whole file, and another `HEAD`. The server spent about 0.35 ms on them per sample, so most of the HTTP cost lies in the client and in setting up connections, which aren't measured separately.
+In the first local run of this branch's version, on amd64 with Podman, both variants made the same two requests per sample: a `HEAD` and one ranged `GET` of the whole file. DuckDB 2.0 on `main` sends a second `HEAD` after the `GET`. The server spent about 0.3 ms on them per sample, so most of the HTTP cost lies in the client and in setting up connections, which aren't measured separately.
 
 **Informational**, in `provenance.json` and the summary:
 
-- The DuckDB version and source commit each variant reports. They must be the same.
+- The DuckDB version and source commit each variant reports. The version must be `duckdb_version`'s. DuckDB abbreviates the commit to a length that depends on the build, so the bundle reports `069cc9f` and the stock library `069cc9f9b5`; the shorter must be a prefix of the longer.
+- The stock module's path, version and checksum, the sha256 of each of its archives, and that it has no `provenance.json`.
+- The shared libraries each executable needs.
 - The bundle's sha256, and the stock `httpfs` file: its URL, size, sha256 and how long it took to download. That download happens once, before any sample, and is in no timed metric.
 - The fixture's URL, size and sha256, and the server's image and network.
 - Each variant's executable, package and zipped package size.
-- Each extension's `install_mode` and `install_path` after the `LOAD`s.
+- Each extension's `install_mode` and `install_path` after the `LOAD`s, and the other extensions loaded.
 - The Go and compiler versions and flags.
 - The runner's CPU, kernel, Docker and SAM versions.
 
@@ -77,7 +88,7 @@ The Lambda containers can reach the internet through the run's network, as the H
 |---|---|
 | `not run` | The variants couldn't be built, the fixture server didn't start or failed its check before the samples, or a warm-up didn't read the fixture correctly. |
 | `functional failure` | A variant returned an error or a `sum(id)` other than the manifest's. |
-| `incomparable` | The stock library in `example/go.mod` is a different DuckDB version from `duckdb_version`, the stock variant can't get `httpfs`, the variants report different DuckDB builds or platforms, an extension isn't loaded, automatic loading was on, the custom variant's extensions aren't all built in or the stock `httpfs` didn't come from the package, a sample read another URL, or the served fixture's hash isn't the manifest's. |
+| `incomparable` | The stock library in `example/go.mod` is a different DuckDB version from `duckdb_version`, the stock executable doesn't link it or the custom one does, either executable needs a `libduckdb` shared library, the stock variant can't get `httpfs`, the samples report a DuckDB version other than `duckdb_version`'s, the variants report different DuckDB builds or platforms, an extension isn't loaded, automatic loading was on, the custom variant's extensions aren't all built in or the stock `httpfs` didn't come from the package, a sample read another URL, or the served fixture's hash isn't the manifest's. |
 | `invalid samples` | A sample came from a process that had answered before (by its random instance ID, not its PID, which repeats across containers), wasn't its process's first invocation, lacks a metric, or has no clean read of the fixture in the server's log; a variant has fewer valid samples than were asked for; or the fixture server failed after the samples. Each rejected sample's reason is listed, even when a variant has none left. |
 | `valid` | None of these. The summary then gives each metric's median, p95 and interquartile range per variant, and the HTTP requests per sample. |
 
@@ -87,7 +98,7 @@ When `DUCKDB_TEST_HTTPFS_BASE_URL` is set, each variant is also invoked once mor
 
 ## Running it
 
-You need Docker or Podman, the AWS SAM CLI, `jq` and Python 3, on a host of the bundle's architecture: x86_64 for `amd64`, aarch64 for `arm64`. Don't run the other architecture under emulation. Take a bundle tarball from a build run or a release (see [`test/README.md`](../../test/README.md#running-the-tests)), and from the repository's root:
+You need Docker or Podman, the AWS SAM CLI, `jq` and Python 3, on a host of the bundle's architecture: x86_64 for `amd64`, aarch64 for `arm64`. Don't run the other architecture under emulation. Take a bundle tarball from a build run or a `v1.5.6_<n>` release (see the top-level README's [Testing a bundle](../../README.md#testing-a-bundle)), and from the repository's root:
 
 ```bash
 BUNDLE_TARBALL=$HOME/duckdb-bundle/libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz \
@@ -95,16 +106,18 @@ SAMPLES=5 BENCH_WORK=$HOME/duckdb-bench \
   example/bench/run.sh
 ```
 
-`SAMPLES` defaults to 30. The results are in `$BENCH_WORK/results/`: `summary.md`, `summary.json`, `provenance.json`, the raw `samples.jsonl`, `warmup.jsonl` and `remote.jsonl`, the fixture server's `fixture-requests.jsonl` and `fixture-server.log`, the output of its checks before and after the samples, and the build and SAM logs. Set `DUCKDB_TEST_HTTPFS_BASE_URL` as in [`test/README.md`](../../test/README.md#real-https) to add the HTTPS check. `run.sh` extracts the bundle into `example/bench/libs/`, which git ignores.
+`SAMPLES` defaults to 30. The results are in `$BENCH_WORK/results/`: `summary.md`, `summary.json`, `provenance.json`, the raw `samples.jsonl`, `warmup.jsonl` and `remote.jsonl`, the fixture server's `fixture-requests.jsonl` and `fixture-server.log`, the output of its checks before and after the samples, and the build and SAM logs. Set `DUCKDB_TEST_HTTPFS_BASE_URL` as in [The HTTPS check](../../README.md#the-https-check) to add the HTTPS check. `run.sh` extracts the bundle into `example/bench/libs/`, which git ignores.
 
 `run.sh` starts the fixture server and its network with the `docker` command, and SAM starts the Lambda containers through the Docker API, so both must reach the same engine. On Fedora with rootless Podman, point SAM at a Podman API socket with SELinux labeling off, as [`example/AGENTS.md`](../AGENTS.md#podman) describes, and use a `docker` command that runs the same user's Podman. Podman's networks resolve container aliases through its DNS server, so the Lambda containers find `fixtures` there as they do on Docker. `run.sh` turns SELinux labeling off for the containers it starts itself, because they mount the fixtures from the checkout.
 
 ## In CI
 
-`.github/workflows/benchmark.yml` runs `run.sh` on `ubuntu-24.04-arm` and `ubuntu-latest`, uploads `results/` as `benchmark-<arch>` (kept 90 days), and puts the summary in the job summary. `build-and-release.yml` calls it with the bundles the run just built: in runs on `main`, which today means a dispatch because pushes to `main` don't build, and on tags; on another branch only when the dispatch sets `benchmark`; and never on a PR. The dispatch input `benchmark-samples` sets the sample count. The release doesn't wait for it. Before `run.sh`, the job runs `test_summarize.py` and `test_run.py`, which need neither SAM nor a container engine; `test_run.py` runs `run.sh` with a stand-in for the `docker` command and checks that a failure while setting up the fixture server leaves no container or network behind. To benchmark an earlier build run's bundles again, within a day of that run:
+`.github/workflows/benchmark.yml` runs `run.sh` on `ubuntu-24.04-arm` and `ubuntu-latest`, uploads `results/` as `benchmark-<arch>` (kept 90 days), and puts the summary in the job summary. `build-and-release.yml` calls it with the bundles the run just built: in runs on `duckdb-v1.5.x`, which are pushes that change the build's inputs and dispatches, and on tags; on another branch only when the dispatch sets `benchmark`; and never on a PR. The dispatch input `benchmark-samples` sets the sample count. The release doesn't wait for it. Before `run.sh`, the job runs `test_summarize.py` and `test_run.py`, which need neither SAM nor a container engine. `test_run.py` runs `run.sh` with a stand-in for the `docker` command. It checks that each `incomparable` case above that `run.sh` can detect before the samples stops the run before the fixture server starts, and that a failure while setting up the fixture server leaves no container or network behind. To benchmark an earlier build run's bundles again, within a day of that run:
 
 ```bash
-gh workflow run benchmark.yml -f build-run-id=<run id> -f samples=30
+gh workflow run benchmark.yml --ref duckdb-v1.5.x -f build-run-id=<run id> -f samples=30
 ```
 
-Shared runners are noisy, and nothing in a single run tells you how noisy. Compare runs before reading much into a difference of a few milliseconds. `ubuntu-latest` doesn't pin a CPU model either. Two runs of the same bundles with the earlier local-file workload, one on an Intel Xeon Platinum 8573C and one on an AMD EPYC 7763, differed by 7 ms in open and connect and by 20 ms in the stock total. So compare amd64 runs only when the runner line in their summaries shows the same CPU. The HTTP query adds variation of its own: its time depends on the container network and on how busy the host is while the server answers, which the server's time per sample only partly shows.
+Without `--ref`, the dispatch runs `main`'s `benchmark.yml`, which builds against `main`'s DuckDB 2.0 `go.mod`.
+
+Shared runners are noisy, and nothing in a single run tells you how noisy. Compare runs before reading much into a difference of a few milliseconds. `ubuntu-latest` doesn't pin a CPU model either. On `main`, two runs of the same bundles with an earlier local-file workload, one on an Intel Xeon Platinum 8573C and one on an AMD EPYC 7763, differed by 7 ms in open and connect and by 20 ms in the stock total. So compare amd64 runs only when the runner line in their summaries shows the same CPU. The HTTP query adds variation of its own: its time depends on the container network and on how busy the host is while the server answers, which the server's time per sample only partly shows.
