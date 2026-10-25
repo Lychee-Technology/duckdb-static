@@ -94,7 +94,11 @@ jobs:
 
       # This branch builds DuckDB 1.5.x only; main builds 2.0. A tag must be
       # v<DUCKDB_VER>_<n>, so no tag publishes a bundle under another DuckDB
-      # version's name. Failing here, before the build, also fails the release.
+      # version's name. Earlier workflows released every 1.5.x tag up to
+      # v1.5.6_0, and a tag push skips the release's overwrite guard, so a tag
+      # must also come after v1.5.6_0: re-pushing an old one would otherwise
+      # replace its published assets. Failing here, before the build, also
+      # fails the release.
       - name: Set version variables
         shell: bash
         env:
@@ -106,9 +110,16 @@ jobs:
             echo "::error title=Not DuckDB 1.5.x::duckdb_version sets DUCKDB_VER=$DUCKDB_VER, but duckdb-v1.5.x builds v1.5.<patch> only."
             exit 1
           fi
-          if [ "$REF_TYPE" = tag ] && [[ ! $TAG =~ ^v[0-9.]+_[0-9]+$ || ${TAG%_*} != "$DUCKDB_VER" ]]; then
-            echo "::error title=Tag doesn't match duckdb_version::Tag $TAG must be ${DUCKDB_VER}_<n>, because the commit builds DuckDB $DUCKDB_VER."
-            exit 1
+          if [ "$REF_TYPE" = tag ]; then
+            if [[ ! $TAG =~ ^v[0-9.]+_[0-9]+$ || ${TAG%_*} != "$DUCKDB_VER" ]]; then
+              echo "::error title=Tag doesn't match duckdb_version::Tag $TAG must be ${DUCKDB_VER}_<n>, because the commit builds DuckDB $DUCKDB_VER."
+              exit 1
+            fi
+            patch=${DUCKDB_VER##*.} n=${TAG##*_}
+            if (( 10#$patch < 6 || (10#$patch == 6 && 10#$n < 1) )); then
+              echo "::error title=Tag already released::Tag $TAG is at or before v1.5.6_0, the tags earlier workflows released. Tag this build v1.5.6_1 or later."
+              exit 1
+            fi
           fi
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
           echo "DUCKDB_EXTENSION_CI_TOOLS_BRANCH=$DUCKDB_EXTENSION_CI_TOOLS_BRANCH" >> $GITHUB_ENV
