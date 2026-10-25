@@ -34,8 +34,10 @@ import (
 	"github.com/duckdb/duckdb-go/v2"
 )
 
-// The bundle's extensions, in its registration order. The stock variant loads
-// httpfs from the package's ext directory and has the others built in.
+// The bundle's extensions. DuckDB 1.5.6 loads every extension linked into the
+// executable when it opens a database, so LOAD does nothing more for them,
+// except for httpfs in the stock variant, which LOAD reads from the package's
+// ext directory.
 var extensions = []string{"core_functions", "parquet", "json", "icu", "httpfs"}
 
 const (
@@ -298,9 +300,11 @@ func describe(ctx context.Context, conn *sql.Conn, r *result) error {
 	for i, name := range extensions {
 		names[i] = "'" + name + "'"
 	}
+	// Also every other loaded extension: the stock library's open loads the
+	// extensions it links beyond the five.
 	rows, err := conn.QueryContext(ctx, `SELECT extension_name, loaded, installed,
 			coalesce(install_mode::VARCHAR, ''), coalesce(install_path, '')
-		FROM duckdb_extensions() WHERE extension_name IN (`+strings.Join(names, ", ")+`) ORDER BY extension_name`)
+		FROM duckdb_extensions() WHERE loaded OR extension_name IN (`+strings.Join(names, ", ")+`) ORDER BY extension_name`)
 	if err != nil {
 		return fmt.Errorf("extensions: %w", err)
 	}

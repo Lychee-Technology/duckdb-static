@@ -3,9 +3,10 @@
  * duckdb-bench in BENCH_BOOTSTRAP_MONOTONIC_NS, and execs it in the same
  * process. duckdb-bench reads the same clock first thing in main, so the
  * difference covers loading the executable and its shared libraries, static
- * constructors, the Go runtime and package initialization, which includes
- * duckdb-go registering the static extensions. It doesn't cover starting this
- * launcher, which happens before the first reading.
+ * constructors, the Go runtime and package initialization. DuckDB 1.5.6 has
+ * nothing to register: it loads the linked extensions when a database opens.
+ * It doesn't cover starting this launcher, which happens before the first
+ * reading.
  */
 #include <stdio.h>
 #include <stdlib.h>

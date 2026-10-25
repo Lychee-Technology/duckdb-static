@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Tests that run.sh removes the fixture server's container and network when
-setting them up fails, using a stand-in for the docker command.
+"""Tests, with a stand-in for the docker command, that run.sh stops before any
+sample when the variants can't be compared, and that it removes the fixture
+server's container and network when setting them up fails.
 
 Usage: python3 example/bench/test_run.py [-v]
 """
@@ -22,10 +23,19 @@ DUCKDB_VER = next(
     if line.startswith("DUCKDB_VER=")
 )
 
+
+def bindings_version(duckdb):
+    """duckdb-go-bindings' version for a DuckDB version: v1.5.6 is v0.10506.0."""
+    major, minor, patch = (int(p) for p in duckdb.lstrip("v").split("."))
+    return f"v0.{major * 10000 + minor * 100 + patch}.0"
+
 # Keeps networks and containers as files under $FAKE_DOCKER_STATE, and acts
 # as Docker and Podman do where run.sh's cleanup depends on it: a container
 # whose start fails stays created, and a network with a container on it can't
-# be removed. $FAKE_DOCKER_FAIL names the step that fails.
+# be removed. $FAKE_DOCKER_FAIL names the step that fails. The build writes
+# what the Dockerfile writes: the stock executable links
+# $FAKE_STOCK_MODULE_VERSION of the stock library, or no version of it when
+# that is empty, and the variant $FAKE_DYNAMIC needs libduckdb.so.
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 set -u
 state=$FAKE_DOCKER_STATE
@@ -40,7 +50,17 @@ build)
 	done
 	mkdir -p "$out/stock" "$out/custom"
 	echo "fake build" >"$out/build-info.txt"
-	echo "{\"duckdb_version\": \"$FAKE_DUCKDB_VER\"}" >"$out/stock/libduckdb-provenance.json"
+	deps='{"Path": "github.com/duckdb/duckdb-go/v2", "Version": "v2.10506.0", "Sum": "h1:fake"}'
+	echo "{\"Deps\": [$deps]}" >"$out/custom/buildinfo.json"
+	if [ -n "$FAKE_STOCK_MODULE_VERSION" ]; then
+		deps="$deps, {\"Path\": \"github.com/duckdb/duckdb-go-bindings/lib/linux-$FAKE_ARCH\", \"Version\": \"$FAKE_STOCK_MODULE_VERSION\", \"Sum\": \"h1:fake\"}"
+	fi
+	echo "{\"Deps\": [$deps]}" >"$out/stock/buildinfo.json"
+	printf '%064d  libduckdb_static.a\n' 0 >"$out/stock/library.sha256"
+	for v in stock custom; do
+		printf 'libstdc++.so.6\nlibc.so.6\n' >"$out/$v/needed.txt"
+		if [ "$FAKE_DYNAMIC" = "$v" ]; then echo libduckdb.so >>"$out/$v/needed.txt"; fi
+	done
 	touch "$out/bootstrap" "$out/stock/duckdb-bench" "$out/custom/duckdb-bench"
 	;;
 network)
@@ -91,9 +111,11 @@ rm)
 esac
 """
 
-# Stands in for downloading the stock httpfs.
+# Stands in for downloading the stock httpfs, which fails when
+# $FAKE_DOCKER_FAIL is httpfs.
 FAKE_CURL = r"""#!/usr/bin/env bash
 set -eu
+if [ "$FAKE_DOCKER_FAIL" = httpfs ]; then echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; fi
 while [ $# -gt 0 ]; do
 	case $1 in -o) out=$2; shift ;; esac
 	shift
@@ -103,7 +125,7 @@ printf 0.01
 """
 
 
-class CleanupTest(unittest.TestCase):
+class RunTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp)
@@ -139,13 +161,16 @@ class CleanupTest(unittest.TestCase):
             BUNDLE_TARBALL=str(self.bundle),
             BENCH_WORK=str(self.tmp / "work"),
             FAKE_DOCKER_STATE=str(self.state),
-            FAKE_DUCKDB_VER=DUCKDB_VER,
+            FAKE_DOCKER_FAIL="",
+            FAKE_ARCH={"x86_64": "amd64", "aarch64": "arm64"}[os.uname().machine],
+            FAKE_STOCK_MODULE_VERSION=bindings_version(DUCKDB_VER),
+            FAKE_DYNAMIC="",
         )
         self.results = self.tmp / "work" / "results"
 
-    def run_failing_at(self, step):
+    def run_failing(self, status="not run", **env):
         proc = subprocess.run(
-            ["bash", str(self.run_sh)], env={**self.env, "FAKE_DOCKER_FAIL": step},
+            ["bash", str(self.run_sh)], env={**self.env, **env},
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120,
         )
         calls = (self.state / "calls").read_text()
@@ -154,8 +179,45 @@ class CleanupTest(unittest.TestCase):
         left = sorted(p.name for p in self.state.iterdir() if p.name != "calls")
         self.assertEqual(left, [], detail)
         summary = json.loads((self.results / "summary.json").read_text())
-        self.assertEqual(summary["status"], "not run", detail)
+        self.assertEqual(summary["status"], status, detail)
         return summary, calls
+
+    def run_failing_at(self, step):
+        return self.run_failing(FAKE_DOCKER_FAIL=step)
+
+    def run_incomparable(self, reason, **env):
+        """Checks that run.sh stops before starting the fixture server."""
+        summary, calls = self.run_failing("incomparable", **env)
+        self.assertNotIn("network create ", calls)
+        self.assertIn(reason, summary["reasons"][0])
+        return summary
+
+    def test_stock_library_for_another_duckdb_version(self):
+        other = "v0.10505.0" if DUCKDB_VER != "v1.5.5" else "v0.10506.0"
+        self.run_incomparable(", but duckdb_version is " + DUCKDB_VER, FAKE_STOCK_MODULE_VERSION=other)
+        prov = json.loads((self.results / "provenance.json").read_text())
+        self.assertEqual(prov["stock_library"]["version"], other)
+        self.assertFalse(prov["stock_library"]["provenance_json"])
+
+    def test_stock_executable_without_the_stock_library(self):
+        self.run_incomparable("The stock executable doesn't link github.com/duckdb/duckdb-go-bindings/lib/linux-",
+                              FAKE_STOCK_MODULE_VERSION="")
+
+    def test_variant_that_loads_duckdb_as_a_shared_library(self):
+        for v in ("stock", "custom"):
+            with self.subTest(variant=v):
+                self.run_incomparable(f"The {v} executable loads DuckDB as a shared library (libduckdb.so)",
+                                      FAKE_DYNAMIC=v)
+
+    def test_stock_httpfs_unavailable(self):
+        self.run_incomparable("The stock variant can't load httpfs offline", FAKE_DOCKER_FAIL="httpfs")
+
+    def test_stock_library_for_this_duckdb_version_is_recorded(self):
+        # Fails later, at the fixture server, after the checks above passed.
+        self.run_failing_at("preflight")
+        lib = json.loads((self.results / "provenance.json").read_text())["stock_library"]
+        self.assertEqual((lib["duckdb_version"], lib["version"]), (DUCKDB_VER, bindings_version(DUCKDB_VER)))
+        self.assertEqual(lib["archives"], [{"sha256": "0" * 64, "name": "libduckdb_static.a"}])
 
     def test_network_create_fails(self):
         summary, calls = self.run_failing_at("network")

@@ -17,8 +17,9 @@ status is the first that applies:
                       warm-up failed before any sample
   functional failure  a variant failed or returned the wrong result
   incomparable        the variants differ in DuckDB version, configuration,
-                      extension readiness, how they load httpfs, or data, or
-                      the stock variant can't load httpfs offline
+                      extension readiness, how they load httpfs, or data, a
+                      variant's DuckDB isn't duckdb_version's, or the stock
+                      variant can't load httpfs offline
   invalid samples     a sample was rejected, a variant has fewer valid samples
                       than asked, or the fixture server failed during sampling
   valid               everything else
@@ -174,8 +175,15 @@ def parity(valid, prov, manifest):
     urls = sorted({base_url(r.get("url")) for r in every})
     if urls and urls != [fixture.get("url")]:
         reasons.append(f"The samples read {', '.join(urls)}, not the fixture server's {fixture.get('url')}.")
-    builds = sorted({f"{r.get('library_version')} {r.get('source_id')}" for r in every})
-    if len(builds) > 1:
+    versions = sorted({str(r.get("library_version")) for r in every})
+    if prov.get("duckdb_version") and versions and versions != [prov["duckdb_version"]]:
+        reasons.append(f"The samples report DuckDB {', '.join(versions)}, but duckdb_version is {prov['duckdb_version']}.")
+    # DuckDB abbreviates its source commit to a length that depends on the
+    # build: for v1.5.6 the bundle reports 069cc9f and duckdb-go-bindings'
+    # library 069cc9f9b5. Every ID must be a prefix of the longest.
+    ids = sorted({str(r.get("source_id") or "") for r in every}, key=len)
+    if len(versions) > 1 or any(len(i) < 7 or not ids[-1].startswith(i) for i in ids):
+        builds = sorted({f"{r.get('library_version')} {r.get('source_id')}" for r in every})
         reasons.append(f"The variants report different DuckDB builds: {', '.join(builds)}.")
     platforms = sorted({str(r.get("platform")) for r in every})
     if len(platforms) > 1:
@@ -376,8 +384,8 @@ def markdown(prov, valid, summary):
             "",
             "Measured with `CLOCK_MONOTONIC` from just before the launcher's `exec` to the first statement of `main`. "
             "It includes loading the executable and its libraries, static constructors, the Go runtime and package "
-            "initialization, where duckdb-go registers the static extensions, and isn't any one of them. "
-            "The primary metrics start after it.",
+            "initialization, and isn't any one of them. DuckDB 1.5.6 loads its linked extensions when the database "
+            "opens, inside the first primary metric, not here. The primary metrics start after it.",
             "",
             "### HTTP requests per sample",
             "",
@@ -397,10 +405,16 @@ def markdown(prov, valid, summary):
         out.append(f"- Bundle: `{bundle.get('name')}`, sha256 `{bundle.get('sha256')}`")
     lib = prov.get("stock_library")
     if lib:
+        static = next((a.get("sha256") for a in lib.get("archives") or [] if a.get("name") == "libduckdb_static.a"), None)
         out.append(
-            f"- Stock library: DuckDB {lib.get('duckdb_version')} for {lib.get('platform')}, source {lib.get('source')}, "
-            f"from {lib.get('url')} (sha256 `{lib.get('sha256')}`)"
+            f"- Stock library: `{lib.get('module')}` {lib.get('version')} (`{lib.get('sum')}`), DuckDB "
+            f"{lib.get('duckdb_version')} by its version, `libduckdb_static.a` sha256 `{static}`. The module ships "
+            "no `provenance.json`, so the samples' `pragma_version()` is what identifies its DuckDB build."
         )
+    needed = prov.get("needed")
+    if needed:
+        out.append("- Shared libraries the executables need, neither of them DuckDB: "
+                   + "; ".join(f"{v} {', '.join(needed.get(v) or [])}" for v in VARIANTS))
     ext = prov.get("stock_httpfs")
     if ext:
         out.append(
@@ -431,8 +445,12 @@ def markdown(prov, valid, summary):
             mode = e.get("install_mode")
             return mode if mode == "STATICALLY_LINKED" or not e.get("install_path") else f"{mode}, `{e['install_path']}`"
         modes = {v: {e["name"]: how(e) for e in valid[v][0].get("extensions") or []} for v in VARIANTS}
+        # Extensions loaded beyond the five, which DuckDB loaded on open
+        # because the variant's library links them.
+        others = sorted(set(modes["stock"]).union(modes["custom"]).difference(EXTENSIONS))
         out += ["", "| Extension | Stock | Custom |", "|---|---|---|"]
-        out += [f"| {name} | {modes['stock'].get(name)} | {modes['custom'].get(name)} |" for name in EXTENSIONS]
+        out += [f"| {name} | {modes['stock'].get(name, '-')} | {modes['custom'].get(name, '-')} |"
+                for name in EXTENSIONS + tuple(others)]
         out.append("")
     for line in prov.get("build") or []:
         out.append(f"- Build: {line}")

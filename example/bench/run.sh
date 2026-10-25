@@ -141,10 +141,40 @@ if ! docker build --progress=plain --build-arg "GO_ARCH=$arch" --target exporter
 fi
 prov build "$(jq -Rs 'split("\n") | map(select(length > 0))' "$work/out/build-info.txt")"
 
-stock_version=$(jq -r .duckdb_version "$work/out/stock/libduckdb-provenance.json")
-prov stock_library "$(jq -c . "$work/out/stock/libduckdb-provenance.json")"
+prov needed "$(jq -n --rawfile stock "$work/out/stock/needed.txt" --rawfile custom "$work/out/custom/needed.txt" \
+	'{stock: $stock, custom: $custom} | map_values(split("\n") | map(select(length > 0)))')"
+for v in stock custom; do
+	if dynamic=$(grep '^libduckdb' "$work/out/$v/needed.txt"); then
+		setup_failed incomparable "The $v executable loads DuckDB as a shared library ($(paste -sd, <<<"$dynamic")); both variants must link it statically."
+	fi
+done
+
+# The stock library is duckdb-go-bindings' prebuilt static archives for this
+# platform, which the stock executable's build info names. The module ships no
+# provenance.json, so until the samples report their DuckDB build, only its
+# version says which DuckDB it holds: v0.10506.0 is DuckDB 1.5.6.
+stock_module=github.com/duckdb/duckdb-go-bindings/lib/linux-$arch
+module_of() { jq -c --arg m "$stock_module" 'first(.Deps[]? | select(.Path == $m)) // empty' "$work/out/$1/buildinfo.json"; }
+stock_dep=$(module_of stock)
+if [ -z "$stock_dep" ]; then
+	setup_failed incomparable "The stock executable doesn't link $stock_module, duckdb-go-bindings' prebuilt DuckDB library."
+fi
+if [ -n "$(module_of custom)" ]; then
+	setup_failed incomparable "The custom executable links $stock_module, the stock library, instead of only the bundle."
+fi
+stock_module_version=$(jq -r .Version <<<"$stock_dep")
+n=${stock_module_version#v*.}
+n=${n%%.*}
+stock_version=unknown
+if [[ $n =~ ^[0-9]+$ ]]; then
+	stock_version=v$((10#$n / 10000)).$((10#$n / 100 % 100)).$((10#$n % 100))
+fi
+prov stock_library "$(jq -n --argjson dep "$stock_dep" --arg duckdb "$stock_version" \
+	--rawfile archives "$work/out/stock/library.sha256" \
+	'{module: $dep.Path, version: $dep.Version, sum: $dep.Sum, duckdb_version: $duckdb, provenance_json: false,
+	  archives: ($archives | split("\n") | map(select(length > 0) | capture("^(?<sha256>[0-9a-f]{64})  (?<name>.+)$")))}')"
 if [ "$stock_version" != "$DUCKDB_VER" ]; then
-	setup_failed incomparable "The stock duckdb-go library in example/go.mod is DuckDB $stock_version, but duckdb_version is $DUCKDB_VER."
+	setup_failed incomparable "The stock library, $stock_module $stock_module_version from example/go.mod, is DuckDB $stock_version, but duckdb_version is $DUCKDB_VER."
 fi
 
 # The stock library has no httpfs. Provision DuckDB's own build of it in the

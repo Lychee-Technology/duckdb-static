@@ -45,14 +45,17 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_LDFLAGS="-L/src/bench/libs -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl" \
       go build -tags=duckdb_use_static_lib -ldflags="-s -w" -o /out/custom/duckdb-bench ./bench && \
     gcc14-gcc -O2 -o /out/bootstrap bench/launcher/launcher.c && \
-    stock_lib="go.duckdb.org/libduckdb/linux-${GO_ARCH}" && \
-    cp "$(go list -m -f '{{.Dir}}' "$stock_lib")/provenance.json" /out/stock/libduckdb-provenance.json && \
+    stock_lib="github.com/duckdb/duckdb-go-bindings/lib/linux-${GO_ARCH}" && \
+    (cd "$(go list -m -f '{{.Dir}}' "$stock_lib")" && sha256sum *.a) > /out/stock/library.sha256 && \
+    for v in stock custom; do \
+      go version -m -json "/out/$v/duckdb-bench" > "/out/$v/buildinfo.json" && \
+      readelf -d "/out/$v/duckdb-bench" | sed -n 's/.*(NEEDED).*\[\(.*\)\]$/\1/p' > "/out/$v/needed.txt" || exit 1; \
+    done && \
     { echo "go: $(go version)"; \
       echo "cc: $(gcc14-gcc --version | head -n1)"; \
       echo "go build flags: -ldflags=-s -w, GOFLAGS=$GOFLAGS"; \
-      echo "stock: no build tag; duckdb-go-bindings' prebuilt go.duckdb.org/libduckdb library"; \
+      echo "stock: no build tag; duckdb-go-bindings' prebuilt static archives in $stock_lib"; \
       echo "custom: -tags=duckdb_use_static_lib; CPPFLAGS=-DDUCKDB_STATIC_BUILD; CGO_LDFLAGS=-L/src/bench/libs -lduckdb_bundle -lstdc++ -lm -lcurl -lssl -lcrypto -lpthread -ldl"; \
-      echo "stock library: $(go list -m -f '{{.Path}} {{.Version}}' "$stock_lib")"; \
     } > /out/build-info.txt
 
 FROM scratch AS exporter

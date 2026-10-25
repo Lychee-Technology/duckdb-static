@@ -24,7 +24,9 @@ MANIFEST = Path(HERE, "..", "..", "test", "fixtures", "public", "v2", "manifest.
 FIXTURE = next(f for f in json.loads(MANIFEST.read_text())["files"] if f["path"] == "tiny.parquet")
 URL = "http://fixtures:8080/v2/tiny.parquet"
 EXT_DIR = "/var/task/ext"
-STOCK_HTTPFS = f"{EXT_DIR}/v2.0.0/linux_amd64/httpfs.duckdb_extension"
+STOCK_HTTPFS = f"{EXT_DIR}/v1.5.6/linux_amd64/httpfs.duckdb_extension"
+# What each variant reports as its source_id for DuckDB v1.5.6.
+SOURCE_IDS = {"stock": "069cc9f9b5", "custom": "069cc9f"}
 
 
 def response(variant, n):
@@ -51,8 +53,8 @@ def response(variant, n):
         "result": 720600,
         "result_ok": True,
         "error": "",
-        "library_version": "v2.0.0",
-        "source_id": "d54cbbe3df",
+        "library_version": "v1.5.6",
+        "source_id": SOURCE_IDS[variant],
         "platform": "linux_amd64",
         "extensions": extensions,
         "settings": {
@@ -83,6 +85,7 @@ class SummarizeTest(unittest.TestCase):
         self.dir = Path(tempfile.mkdtemp())
         self.prov = {
             "arch": "amd64",
+            "duckdb_version": "v1.5.6",
             "samples_requested": self.SAMPLES,
             "fixture": {"url": URL, "path": "v2/tiny.parquet", "bytes": FIXTURE["size"], "sha256": FIXTURE["sha256"]},
         }
@@ -288,7 +291,39 @@ class SummarizeTest(unittest.TestCase):
         for r in self.samples:
             if r["variant"] == "stock":
                 r["response"]["source_id"] = "0000000000"
-        self.assert_status("incomparable")
+        self.assert_status("incomparable", "different DuckDB builds")
+
+    def test_abbreviations_of_one_commit_are_one_build(self):
+        # The default responses already differ in length; a third length of
+        # the same commit is still the same build.
+        self.samples[0]["response"]["source_id"] = "069cc9f9b5be"
+        self.assert_status("valid")
+
+    def test_missing_or_short_source_id_is_incomparable(self):
+        for value in ("", None, "069cc9"):
+            with self.subTest(value=value):
+                self.setUp()
+                for r in self.samples:
+                    if r["variant"] == "custom":
+                        r["response"]["source_id"] = value
+                self.assert_status("incomparable", "different DuckDB builds")
+
+    def test_another_duckdb_version_is_incomparable(self):
+        # Both variants agree, but neither is the DuckDB this branch builds.
+        for r in self.samples:
+            r["response"]["library_version"] = "v1.5.5"
+        self.assert_status("incomparable", "The samples report DuckDB v1.5.5, but duckdb_version is v1.5.6.")
+
+    def test_other_loaded_extensions_are_listed(self):
+        # duckdb-go-bindings' library links tpch, which DuckDB 1.5.6 loads on
+        # open. It is reported, and changes no status.
+        for r in self.samples:
+            if r["variant"] == "stock":
+                r["response"]["extensions"].append({"name": "tpch", "loaded": True, "installed": True,
+                                                    "install_mode": "STATICALLY_LINKED", "install_path": ""})
+        self.assert_status("valid")
+        prov, valid, summary = summarize.summarize(self.dir, json.loads(MANIFEST.read_text()))
+        self.assertIn("| tpch | STATICALLY_LINKED | - |", summarize.markdown(prov, valid, summary))
 
     def test_unloaded_extension_is_incomparable(self):
         self.samples[1]["response"]["extensions"][1]["loaded"] = False
