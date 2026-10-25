@@ -7,11 +7,12 @@ name: Example
 
 on:
   pull_request:
+    branches: [duckdb-v1.5.x]
     paths:
       - 'example/**'
       - '.github/workflows/example.yml'
   push:
-    branches: [main]
+    branches: [duckdb-v1.5.x]
     paths:
       - 'example/**'
       - '.github/workflows/example.yml'
@@ -19,7 +20,7 @@ on:
   workflow_call:
     inputs:
       bundle-artifact:
-        description: Test the bundles uploaded by the calling run's build job instead of the latest release.
+        description: Test the bundles uploaded by the calling run's build job instead of the newest release of duckdb_version.
         type: boolean
         default: false
 
@@ -27,8 +28,72 @@ permissions:
   contents: read
 
 jobs:
+  versions:
+    name: Versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # duckdb-go's versions encode the DuckDB version they were released for:
+      # v2.10506.0 and v0.10506.0 are DuckDB 1.5.6. The bindings compile against
+      # their own duckdb.h, so they must be the ones for the bundle's DuckDB,
+      # which is duckdb_version's in both kinds of run.
+      - name: Check go.mod's duckdb-go against duckdb_version
+        shell: bash
+        run: |
+          source ./duckdb_version
+          status=0
+          for module in github.com/duckdb/duckdb-go/v2 github.com/duckdb/duckdb-go-bindings; do
+            version=$(awk -v m="$module" '$1 == m { print $2 }' example/go.mod)
+            n=${version#v*.}
+            n=${n%%.*}
+            if [[ ! $n =~ ^[0-9]+$ ]]; then
+              echo "::error file=example/go.mod::Can't read a DuckDB version from $module '$version'."
+              status=1
+              continue
+            fi
+            duckdb=v$((10#$n / 10000)).$((10#$n / 100 % 100)).$((10#$n % 100))
+            echo "$module $version is for DuckDB $duckdb"
+            if [ "$duckdb" != "$DUCKDB_VER" ]; then
+              echo "::error file=example/go.mod::$module $version is for DuckDB $duckdb, but duckdb_version is $DUCKDB_VER. Use the duckdb-go release for $DUCKDB_VER."
+              status=1
+            fi
+          done
+          exit $status
+
+      # Between changing duckdb_version and releasing that version, no release
+      # holds the bundle this commit's go.mod is for. The README jobs then show
+      # as skipped rather than passed. The build workflow's run for the same
+      # change tests the example against the bundles it builds.
+      - name: Find the newest release of duckdb_version
+        id: release
+        if: ${{ !inputs.bundle-artifact }}
+        shell: bash
+        run: |
+          source ./duckdb_version
+          for arch in arm64 amd64; do
+            status=0
+            url=$(example/release-url.sh "$DUCKDB_VER" "$arch" httpfs-parquet) || status=$?
+            if [ "$status" -eq 2 ]; then
+              echo "::notice title=Example skipped::No release is tagged ${DUCKDB_VER}_<n>, so the README jobs are skipped. Run the build workflow on this branch to test the example against a bundle built from it."
+              exit 0
+            fi
+            [ "$status" -eq 0 ] || exit "$status"
+            echo "$arch: $url"
+          done
+          tag=${url%/*}
+          echo "tag=${tag##*/}" >> "$GITHUB_OUTPUT"
+
   readme:
     name: README (${{ matrix.host }})
+    needs: versions
+    if: inputs.bundle-artifact || needs.versions.outputs.release != ''
     strategy:
       fail-fast: false
       matrix:
@@ -44,6 +109,7 @@ jobs:
     env:
       SAM_CLI_TELEMETRY: '0'
       AWS_DEFAULT_REGION: us-east-1
+      TARBALL: libduckdb_bundle-${{ matrix.arch }}-linux-httpfs-parquet.tar.xz
 
     steps:
       - uses: actions/checkout@v6
@@ -54,26 +120,6 @@ jobs:
           docker version --format '{{.Server.Version}} {{.Server.Arch}}'
           sam --version
 
-      # make download-libs fetches the latest release. Between pushing a DuckDB
-      # bump and releasing it, that release has an older DuckDB than this
-      # commit's go.mod expects, so the result wouldn't say anything about this
-      # commit. The build workflow tests the example against its own bundle.
-      - name: Check the latest release against duckdb_version
-        id: release
-        if: ${{ !inputs.bundle-artifact }}
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          source ./duckdb_version
-          latest=$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" \
-            https://api.github.com/repos/Lychee-Technology/duckdb-static/releases/latest | jq -er .tag_name)
-          echo "Latest release: $latest, duckdb_version: $DUCKDB_VER"
-          if [ "${latest%_*}" != "$DUCKDB_VER" ]; then
-            echo "::notice::Skipped: the latest release, $latest, doesn't contain DuckDB $DUCKDB_VER from duckdb_version. Run the build workflow on this branch to test the example against a bundle built from it."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Download the bundle built in this run
         if: ${{ inputs.bundle-artifact }}
         uses: actions/download-artifact@v7
@@ -81,13 +127,18 @@ jobs:
           name: libduckdb-${{ matrix.arch }}-httpfs-parquet
           path: ${{ runner.temp }}/bundle
 
+      - name: Check that it is the tarball the build smoke-tested
+        if: ${{ inputs.bundle-artifact }}
+        working-directory: ${{ runner.temp }}/bundle
+        run: sha256sum -c "$TARBALL.sha256"
+
       - name: Run the README commands
-        if: steps.release.outputs.skip != 'true'
         shell: bash
         env:
           HOST: ${{ matrix.host }}
-          # Read by make download-libs; empty means download the latest release.
-          BUNDLE_TARBALL: ${{ inputs.bundle-artifact && format('{0}/bundle/libduckdb_bundle-{1}-linux-httpfs-parquet.tar.xz', runner.temp, matrix.arch) || '' }}
+          # Read by make download-libs; empty means download the newest release
+          # of duckdb_version.
+          BUNDLE_TARBALL: ${{ inputs.bundle-artifact && format('{0}/bundle/{1}', runner.temp, env.TARBALL) || '' }}
         run: |
           # Prints the body of the first fenced code block after the line
           # "<!-- $1 -->" in example/README.md.
@@ -109,6 +160,16 @@ jobs:
           # sam local invoke prints the result without a trailing newline, and
           # workflow commands such as ::error only work at the start of a line.
           echo
+
+          # make download-libs records where the bundle came from: a release
+          # asset's URL, or the path of BUNDLE_TARBALL.
+          {
+            echo "### Example ($HOST)"
+            echo "Bundle: \`$(cat example/libs/parquet/url.txt)\`"
+            if [ -n "$BUNDLE_TARBALL" ]; then
+              echo "Smoke-tested: \`$(cat "$BUNDLE_TARBALL.sha256")\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
           if ! grep -Fxq -- "$expected" "$RUNNER_TEMP/stdout.txt"; then
             echo "::error file=example/README.md::The output has no line matching the README's expected output: $expected"

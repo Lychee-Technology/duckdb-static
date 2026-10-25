@@ -40,7 +40,9 @@ build-DuckDBParquetFunction:
 	@echo "Build complete. Artifacts are in $(ARTIFACTS_DIR)/"
 
 # download-libs
-# Downloads the matching release asset from the duckdb-static GitHub releases.
+# Downloads the matching asset of the newest release tagged $(DUCKDB_VER)_<n>
+# from the duckdb-static GitHub releases (release-url.sh picks it), not the
+# release marked Latest, which is main's DuckDB 2.0 build.
 # BUNDLE_TARBALL=<path to a bundle .tar.xz> extracts that file instead, such as
 # a bundle from a branch run of the build workflow. CI uses it to test the
 # example against the bundle it just built.
@@ -48,6 +50,9 @@ FLAVOR ?= parquet
 ASSET_FLAVOR := httpfs-parquet
 LIBS_DIR := libs/$(FLAVOR)
 BUNDLE_TARBALL ?=
+# The DuckDB version whose release download-libs fetches: the repository's
+# duckdb_version, which go.mod's duckdb-go versions must match.
+DUCKDB_VER ?= $(shell sed -n 's/^DUCKDB_VER=//p' ../duckdb_version 2>/dev/null)
 
 download-libs:
 	@echo "Preparing $(LIBS_DIR) for ARCH=$(ARCH) FLAVOR=$(FLAVOR)"
@@ -59,11 +64,9 @@ ifneq ($(BUNDLE_TARBALL),)
 	@echo "$(abspath $(BUNDLE_TARBALL))" > $(LIBS_DIR)/url.txt
 	@echo "Done."
 else
-	@echo "Querying latest release for Lychee-Technology/duckdb-static..."
-	@PATTERN="libduckdb_bundle-$(ARCH)-linux-$(ASSET_FLAVOR)\\.tar"; \
-	url=$$(curl -s https://api.github.com/repos/Lychee-Technology/duckdb-static/releases/latest | \
-		jq -r --arg p "$$PATTERN" '.assets[] | select(.name | test($$p; "i")) | .browser_download_url' | head -n1); \
-	if [ -z "$$url" ]; then echo "No matching asset found for FLAVOR=$(FLAVOR) ARCH=$(ARCH)"; exit 1; fi; \
+	@if [ -z "$(DUCKDB_VER)" ]; then echo "No DuckDB version: ../duckdb_version has no DUCKDB_VER. Name the version, such as make download-libs DUCKDB_VER=v1.5.6."; exit 1; fi
+	@echo "Querying the newest $(DUCKDB_VER)_<n> release of Lychee-Technology/duckdb-static..."
+	@url=$$(./release-url.sh "$(DUCKDB_VER)" "$(ARCH)" "$(ASSET_FLAVOR)") || exit 1; \
 	echo "Found $$url"; \
 	url_file=$(LIBS_DIR)/url.txt; \
 	if [ -f "$$url_file" ] && [ "$$(cat $$url_file)" = "$$url" ] && [ -z "$(FORCE)" ]; then \

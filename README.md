@@ -43,13 +43,14 @@ This repository utilizes a **GitHub Actions** workflow to ensure reliability and
 3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It also checks core SQL, nested JSON, local Parquet and a reopened database file, that those checks left no other extension installed or loaded, and the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded, with the sha256 recorded right after the test.
 4.  **Release:** Checks that each tarball is the one its smoke test passed, then publishes the two tarballs and a `SHA256SUMS`, without marking the release Latest. See [Releasing](#releasing).
 5.  **Test over HTTPS:** Alongside the release, the `httpfs-remote` job runs the fixture queries on each new bundle against a public HTTPS copy of the fixtures. The release doesn't wait for it; see [The HTTPS check](#the-https-check).
+6.  **Test the example:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`. The release doesn't wait for it either.
 
 ### Installation / Usage
 You don't need to build from source. simply:
 1.  Open the newest `v1.5.6_<n>` release, currently [**v1.5.6_0**](https://github.com/Lychee-Technology/duckdb-static/releases/tag/v1.5.6_0). The release marked Latest is `main`'s DuckDB 2.0 build, and its tarballs have the same names, so choose the release by its tag.
 2.  Download the `.tar.xz` file for the corresponding arch.
 3.  From `v1.5.6_1` on, check it against the release's `SHA256SUMS` with `sha256sum -c --ignore-missing SHA256SUMS`.
-4.  Include the binary in your serverless deployment package.
+4.  Include the binary in your serverless deployment package. [`example/`](example/) links it into a Go Lambda.
 
 ### Linking
 The tarball contains only `libduckdb_bundle.a`. Compile against `duckdb.h` from DuckDB v1.5.6 (`src/include/duckdb.h`), and link with:
@@ -95,10 +96,12 @@ The binary's output ends with `<n> checks passed`, and the script's with a summa
 
 The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
 
-### Releasing
-A run for a tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload. `httpfs-remote` runs alongside the release, which doesn't wait for it; see [The HTTPS check](#the-https-check).
+To build and invoke the Lambda example against a bundle you have, such as a CI artifact, see [`example/README.md`](example/README.md).
 
-A release from this branch isn't marked Latest. Latest stays `main`'s newest DuckDB 2.0 release, whose tarballs have the same names, and which `main`'s example downloads as `releases/latest`.
+### Releasing
+A run for a tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload. `httpfs-remote` and `example` run alongside the release, which waits for neither. For `httpfs-remote`, see [The HTTPS check](#the-https-check). `example` builds and invokes the Go Lambda; a DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
+
+A release from this branch isn't marked Latest. Latest stays `main`'s newest DuckDB 2.0 release, whose tarballs have the same names, and which `main`'s example downloads as `releases/latest`. This branch's example downloads the newest `v1.5.6_<n>` release instead.
 
 Tag a commit of this branch as `v<DuckDB version>_<n>`, with the DuckDB version `duckdb_version` sets, such as `v1.5.6_1`. The build fails before compiling if the tag names another version, or if `duckdb_version` isn't a DuckDB 1.5.x version, so this branch's workflow can't publish a 2.0 bundle or a bundle under another version's tag. It also fails on `v1.5.6_0` and earlier tags, which earlier workflows released: a tag push isn't checked for an existing release (below), so re-pushing one of them would replace its assets. GitHub runs the workflow file of the commit a tag points at: a `v*` tag on a commit of `main` runs `main`'s workflow and releases a DuckDB 2.0 bundle, which no check on this branch can stop ([#52](https://github.com/Lychee-Technology/duckdb-static/issues/52)). Keep this line's tags on this branch's commits.
 
