@@ -413,7 +413,7 @@ def markdown(prov, valid, summary):
         )
     needed = prov.get("needed")
     if needed:
-        out.append("- Shared libraries the executables need, neither of them DuckDB: "
+        out.append("- Shared libraries each executable needs: "
                    + "; ".join(f"{v} {', '.join(needed.get(v) or [])}" for v in VARIANTS))
     ext = prov.get("stock_httpfs")
     if ext:
