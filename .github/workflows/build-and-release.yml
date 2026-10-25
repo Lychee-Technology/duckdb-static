@@ -92,9 +92,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # This branch builds DuckDB 1.5.x only; main builds 2.0. A tag must be
+      # v<DUCKDB_VER>_<n>, so no tag publishes a bundle under another DuckDB
+      # version's name. Failing here, before the build, also fails the release.
       - name: Set version variables
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
         run: |
           source ./duckdb_version
+          if [[ ! $DUCKDB_VER =~ ^v1\.5\.[0-9]+$ ]]; then
+            echo "::error title=Not DuckDB 1.5.x::duckdb_version sets DUCKDB_VER=$DUCKDB_VER, but duckdb-v1.5.x builds v1.5.<patch> only."
+            exit 1
+          fi
+          if [ "$REF_TYPE" = tag ] && [[ ! $TAG =~ ^v[0-9.]+_[0-9]+$ || ${TAG%_*} != "$DUCKDB_VER" ]]; then
+            echo "::error title=Tag doesn't match duckdb_version::Tag $TAG must be ${DUCKDB_VER}_<n>, because the commit builds DuckDB $DUCKDB_VER."
+            exit 1
+          fi
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
           echo "DUCKDB_EXTENSION_CI_TOOLS_BRANCH=$DUCKDB_EXTENSION_CI_TOOLS_BRANCH" >> $GITHUB_ENV
 
@@ -387,13 +402,20 @@ jobs:
           files: |
             ./release/*.tar.xz
             ./release/SHA256SUMS
+          # main's DuckDB 2.0 releases stay Latest. Their tarballs have the same
+          # names, and main's example/Makefile downloads releases/latest.
+          make_latest: false
           body: |
-            Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
+            Multi-architecture DuckDB 1.5.x bundle release from the `duckdb-v1.5.x` maintenance branch. Built on Amazon Linux 2023. The release marked Latest is `main`'s DuckDB 2.0 build.
 
             **Versions:**
             - DuckDB: `${{ env.DUCKDB_VER }}`
 
             **Variants:**
-            - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with httpfs, parquet, icu, json
+            - `libduckdb_bundle-{platform}-httpfs-parquet.tar.xz` — DuckDB with core_functions, parquet, json, icu, httpfs
+
+            Each tarball holds only `libduckdb_bundle.a`. Compile against `duckdb.h` from DuckDB `${{ env.DUCKDB_VER }}`. Every database opened through the C API has the five extensions loaded, with nothing to register. See the branch's [README](https://github.com/${{ github.repository }}/tree/duckdb-v1.5.x#linking).
+
+            `SHA256SUMS` holds the sha256 of each tarball, as recorded after its smoke test. Check a download with `sha256sum -c --ignore-missing SHA256SUMS`.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
