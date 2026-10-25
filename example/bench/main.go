@@ -34,7 +34,7 @@ import (
 	"github.com/duckdb/duckdb-go/v2"
 )
 
-// The bundle's extensions. DuckDB 1.5.6 loads every extension linked into the
+// The bundle's extensions. DuckDB 1.5.6 loads the extensions linked into the
 // executable when it opens a database, so LOAD does nothing more for them,
 // except for httpfs in the stock variant, which LOAD reads from the package's
 // ext directory.

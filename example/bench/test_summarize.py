@@ -315,15 +315,15 @@ class SummarizeTest(unittest.TestCase):
         self.assert_status("incomparable", "The samples report DuckDB v1.5.5, but duckdb_version is v1.5.6.")
 
     def test_other_loaded_extensions_are_listed(self):
-        # duckdb-go-bindings' library links tpch, which DuckDB 1.5.6 loads on
-        # open. It is reported, and changes no status.
+        # duckdb-go-bindings' library links autocomplete, which DuckDB 1.5.6
+        # loads on open. It is reported, and changes no status.
         for r in self.samples:
             if r["variant"] == "stock":
-                r["response"]["extensions"].append({"name": "tpch", "loaded": True, "installed": True,
+                r["response"]["extensions"].append({"name": "autocomplete", "loaded": True, "installed": True,
                                                     "install_mode": "STATICALLY_LINKED", "install_path": ""})
         self.assert_status("valid")
         prov, valid, summary = summarize.summarize(self.dir, json.loads(MANIFEST.read_text()))
-        self.assertIn("| tpch | STATICALLY_LINKED | - |", summarize.markdown(prov, valid, summary))
+        self.assertIn("| autocomplete | STATICALLY_LINKED | - |", summarize.markdown(prov, valid, summary))
 
     def test_unloaded_extension_is_incomparable(self):
         self.samples[1]["response"]["extensions"][1]["loaded"] = False
