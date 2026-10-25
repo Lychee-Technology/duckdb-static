@@ -25,6 +25,11 @@ on:
       - '.github/workflows/build-and-release.yml'
       - '!**/*.md'
   workflow_dispatch:
+    inputs:
+      overwrite-release:
+        description: On a tag that already has a release, replace its assets with this run's. Without it, the release job refuses.
+        type: boolean
+        default: false
 
 # A new push to a PR cancels the PR's earlier run. Every other run has a group
 # of its own.
@@ -296,8 +301,37 @@ jobs:
     if: github.ref_type == 'tag'
     permissions:
       contents: write
+    # One release job per tag at a time, so a second dispatch's guard runs
+    # after the first has created the release. A run that is still waiting is
+    # cancelled when a newer one queues for the same tag.
+    concurrency:
+      group: release-${{ github.ref }}
+      cancel-in-progress: false
 
     steps:
+      # A dispatch on a tag that already has a release, even a draft, would
+      # replace its assets with this run's bundles. A tag push isn't checked, so
+      # it still fills a release that someone created for the tag before
+      # pushing it. The listing goes through every page, drafts included, and
+      # fails rather than come back short: `gh release list` stops at its
+      # --limit without an error, and the REST listing errors after 10,000.
+      - name: Refuse to replace an existing release's assets
+        if: github.event_name == 'workflow_dispatch' && !inputs.overwrite-release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if ! releases=$(gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[].tag_name'); then
+            echo "::error title=Release lookup failed::Couldn't list every release, so it's unknown whether $TAG already has one."
+            exit 1
+          fi
+          if grep -Fxq -- "$TAG" <<<"$releases"; then
+            echo "::error title=Release exists::$TAG already has a release. Dispatch with overwrite-release to replace its assets with this run's."
+            exit 1
+          fi
+          echo "$TAG has no release yet."
+
       - name: Checkout repository
         uses: actions/checkout@v6
 
