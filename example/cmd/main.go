@@ -19,7 +19,7 @@ type handlerContext struct {
 }
 
 func sqlByFlavor(dataDir string) string {
-	return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/imdb_processed.parquet")`, dataDir)
+	return fmt.Sprintf(`SELECT avg(array_length(tokens)) FROM read_parquet("%s/sample.parquet")`, dataDir)
 }
 
 func (hc *handlerContext) handler(ctx context.Context, _ any) (string, error) {
