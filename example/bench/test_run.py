@@ -219,6 +219,21 @@ class RunTest(unittest.TestCase):
         self.assertEqual((lib["duckdb_version"], lib["version"]), (DUCKDB_VER, bindings_version(DUCKDB_VER)))
         self.assertEqual(lib["archives"], [{"sha256": "0" * 64, "name": "libduckdb_static.a"}])
 
+    def test_http_base_url_for_the_https_check(self):
+        for url in ("http://example.com/fixtures", "HTTP://example.com/fixtures", "example.com/fixtures"):
+            with self.subTest(url=url):
+                proc = subprocess.run(
+                    ["bash", str(self.run_sh)], env={**self.env, "DUCKDB_TEST_HTTPFS_BASE_URL": url},
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120,
+                )
+                self.assertEqual(proc.returncode, 1, proc.stdout)
+                self.assertIn("DUCKDB_TEST_HTTPFS_BASE_URL must be an https:// URL", proc.stdout)
+                self.assertFalse((self.state / "calls").exists(), "run.sh called docker")
+
+    def test_https_base_url_in_any_case(self):
+        # Gets past the URL check and fails later, at the fixture server.
+        self.run_failing(FAKE_DOCKER_FAIL="preflight", DUCKDB_TEST_HTTPFS_BASE_URL="HTTPS://example.com/fixtures")
+
     def test_network_create_fails(self):
         summary, calls = self.run_failing_at("network")
         self.assertIn("network create ", calls)

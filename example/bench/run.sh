@@ -15,7 +15,8 @@
 #   BENCH_WORK                   work directory (default: a new temporary one);
 #                                the results are in $BENCH_WORK/results
 #   DUCKDB_TEST_HTTPFS_BASE_URL  if set, also check, untimed, that each variant
-#                                reads the v1 fixtures from it over httpfs
+#                                reads the v1 fixtures from it over httpfs; it
+#                                must be an https:// URL
 #
 # Exits 0 when the result is valid and 1 otherwise. results/summary.md says
 # which and why. The fixture server's container and network are removed on
@@ -40,6 +41,13 @@ esac
 samples=${SAMPLES:-30}
 if ! [[ $samples =~ ^[1-9][0-9]*$ ]]; then
 	echo "run.sh: SAMPLES must be a positive integer, not '$samples'" >&2
+	exit 1
+fi
+# The HTTPS check is the benchmark's only test of TLS, which an http:// URL
+# would pass without.
+remote_base=${DUCKDB_TEST_HTTPFS_BASE_URL:-}
+if [ -n "$remote_base" ] && [[ ${remote_base,,} != https://* ]]; then
+	echo "run.sh: DUCKDB_TEST_HTTPFS_BASE_URL must be an https:// URL, not '$remote_base'" >&2
 	exit 1
 fi
 work=${BENCH_WORK:-$(mktemp -d)}
@@ -285,9 +293,9 @@ for ((i = 1; i <= samples; i++)); do
 	echo "sample $i/$samples"
 done
 
-if [ -n "${DUCKDB_TEST_HTTPFS_BASE_URL:-}" ]; then
-	echo "== HTTPS check against $DUCKDB_TEST_HTTPFS_BASE_URL"
-	jq -n --arg url "${DUCKDB_TEST_HTTPFS_BASE_URL%/}/v1/multi_row_group.parquet" \
+if [ -n "$remote_base" ]; then
+	echo "== HTTPS check against $remote_base"
+	jq -n --arg url "${remote_base%/}/v1/multi_row_group.parquet" \
 		'{mode: "remote", url: $url}' >"$work/event-remote.json"
 	sample remote.jsonl stock "$work/event-remote.json" 1 1
 	sample remote.jsonl custom "$work/event-remote.json" 1 2
