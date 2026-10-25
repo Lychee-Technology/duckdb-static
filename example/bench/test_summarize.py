@@ -23,6 +23,8 @@ import summarize  # noqa: E402
 MANIFEST = Path(HERE, "..", "..", "test", "fixtures", "public", "v2", "manifest.json")
 FIXTURE = next(f for f in json.loads(MANIFEST.read_text())["files"] if f["path"] == "tiny.parquet")
 URL = "http://fixtures:8080/v2/tiny.parquet"
+# The URL the HTTPS check reads.
+REMOTE_URL = "https://fixtures.example/v1/multi_row_group.parquet"
 EXT_DIR = "/var/task/ext"
 STOCK_HTTPFS = f"{EXT_DIR}/v1.5.6/linux_amd64/httpfs.duckdb_extension"
 # What each variant reports as its source_id for DuckDB v1.5.6.
@@ -367,12 +369,39 @@ class SummarizeTest(unittest.TestCase):
         ok = copy.deepcopy(self.record("stock", 1, 500))
         ok["response"].update(mode="remote", result=1249975000)
         failed = self.record("custom", 1, 501)
-        failed["response"].update(mode="remote", error="IO Error: Could not resolve hostname", result_ok=False,
-                                  result=None)
+        failed["response"].update(mode="remote", error=f"query: IO Error: Could not resolve hostname error for HTTP "
+                                  f"HEAD to '{REMOTE_URL}'", result_ok=False, result=None)
         self.remote = [ok, failed]
         summary = self.assert_status("valid")
         self.assertEqual(summary["remote"]["stock"], "passed")
-        self.assertTrue(summary["remote"]["custom"].startswith("host or network failure"))
+        self.assertTrue(summary["remote"]["custom"].startswith("host or network failure (network: DNS)"))
+
+    def test_remote_failures_are_classified_by_error_type(self):
+        # The error texts httpfs gives on DuckDB 1.5.6, as main.go reports
+        # them, and the layer each one names, or None for the variant's own.
+        cases = (
+            (f"query: IO Error: SSL server verification failed error for HTTP HEAD to '{REMOTE_URL}'",
+             "network: TLS"),
+            (f"query: IO Error: Could not establish connection error for HTTP HEAD to '{REMOTE_URL}'",
+             "network: connection"),
+            (f"query: IO Error: Timeout error for HTTP GET to '{REMOTE_URL}'", "network: timeout"),
+            (f"query: HTTP Error: Request returned HTTP 404 for HTTP HEAD to '{REMOTE_URL}'", "host: HTTP 404"),
+            (f"query: HTTP Error: HTTP GET error on '{REMOTE_URL}' (HTTP 503 Service Unavailable)",
+             "host: HTTP 503"),
+            (f"query: HTTP Error: Server sent back more data than expected, `SET force_download=true` might "
+             f"help for range requests on '{REMOTE_URL}'", "host: byte ranges"),
+            # These mention HTTP or a timeout, but point at the variant.
+            (f"query: IO Error: No magic bytes found at end of file '{REMOTE_URL}'", None),
+            ("query: Permission Error: Loading external extensions is not supported", None),
+            ('LOAD httpfs: IO Error: Extension "httpfs" could not be loaded: Timeout error for HTTP', None),
+            ("Task timed out after 30.00 seconds", None),
+        )
+        for error, layer in cases:
+            with self.subTest(error=error):
+                record = self.record("custom", 1, 501)
+                record["response"].update(mode="remote", error=error, result_ok=False, result=None)
+                expected = f"host or network failure ({layer}): {error}" if layer else f"failed: {error}"
+                self.assertEqual(summarize.remote_outcome(record), expected)
 
     def test_main_exit_status(self):
         self.run_summary()
