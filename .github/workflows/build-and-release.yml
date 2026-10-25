@@ -143,16 +143,30 @@ jobs:
         run: |
           test/smoke.sh libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz "$DUCKDB_VER" include
 
+      # Identifies the tarball the smoke test just passed. The artifact carries
+      # the sha256 file, so a job that downloads the tarball can check that it
+      # has the same bytes.
+      - name: Record sha256
+        env:
+          TARBALL: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+        run: |
+          sha256sum "$TARBALL" > "$TARBALL.sha256"
+          cat "$TARBALL.sha256"
+          echo "Smoke-tested: \`$(cat "$TARBALL.sha256")\`" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: libduckdb-${{ matrix.arch }}-${{ matrix.flavor }}
-          path: libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+          path: |
+            libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz
+            libduckdb_bundle-${{ matrix.platform }}-${{ matrix.flavor }}.tar.xz.sha256
           retention-days: 1
 
       # Lets test/smoke.sh run on this build's tarball without a DuckDB
-      # checkout. Not named libduckdb-*, because the release job publishes
-      # every artifact matching that pattern.
+      # checkout. Not named libduckdb-*, because the release job downloads
+      # every artifact matching that pattern into the directory it releases
+      # from.
       - name: Upload header
         uses: actions/upload-artifact@v7
         with:
@@ -201,6 +215,9 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: libduckdb-${{ matrix.arch }}-httpfs-parquet
+
+      - name: Check that it is the tarball the build smoke-tested
+        run: sha256sum -c "$TARBALL.sha256"
 
       # The tarball holds no header, so the test compiles against the one the
       # build uploaded from its DuckDB checkout.
@@ -256,7 +273,7 @@ jobs:
           fi
           {
             echo "### httpfs remote (${{ matrix.arch }})"
-            echo "Tested: \`$(sha256sum "$TARBALL")\`"
+            echo "Tested: \`$(cat "$TARBALL.sha256")\`"
             echo '```'
             echo "$summary"
             echo '```'
@@ -301,10 +318,41 @@ jobs:
           echo "Files to be released:"
           ls -lh ./release/
 
+      # Publishes only tarballs whose bytes match the sha256 their build job
+      # recorded after the smoke test, one per architecture. The records go out
+      # as one SHA256SUMS: example/Makefile downloads the first asset whose name
+      # contains the tarball's, so it could pick a published <tarball>.sha256.
+      - name: Check that the tarballs are the ones the build smoke-tested
+        working-directory: ./release
+        shell: bash
+        run: |
+          shopt -s nullglob
+          tarballs=(*.tar.xz)
+          if [ "${#tarballs[@]}" -ne 2 ]; then
+            echo "::error title=Missing tarball::Expected the arm64 and amd64 tarballs, found: ${tarballs[*]}"
+            exit 1
+          fi
+          for t in "${tarballs[@]}"; do
+            if [ ! -f "$t.sha256" ] || [ "$(sha256sum "$t")" != "$(cat "$t.sha256")" ]; then
+              echo "::error title=Untested tarball::$t doesn't match the sha256 its build recorded after the smoke test."
+              exit 1
+            fi
+          done
+          cat "${tarballs[@]/%/.sha256}" > SHA256SUMS
+          cat SHA256SUMS
+          {
+            echo 'Releasing, as smoke-tested:'
+            echo '```'
+            cat SHA256SUMS
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: ./release/*
+          files: |
+            ./release/*.tar.xz
+            ./release/SHA256SUMS
           body: |
             Multi-architecture DuckDB bundle release. Built on Amazon Linux 2023.
 
