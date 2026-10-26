@@ -53,6 +53,8 @@ You don't need to build from source. simply:
 3.  From `v1.5.6_1` on, check it against the release's `SHA256SUMS` with `sha256sum -c --ignore-missing SHA256SUMS`.
 4.  Include the binary in your serverless deployment package. [`example/`](example/) links it into a Go Lambda.
 
+The bundle is compiled for `x86-64-v3` on amd64 (Intel Haswell, AMD Zen, or newer) and for `armv8.2-a+crypto+fp16+dotprod+lse` on arm64 (AWS Graviton2 or newer). On older CPUs it crashes with an illegal-instruction error. Both AWS Lambda architectures meet these requirements.
+
 ### Linking
 The tarball contains only `libduckdb_bundle.a`. Compile against `duckdb.h` from DuckDB v1.5.6 (`src/include/duckdb.h`), and link with:
 
@@ -64,40 +66,16 @@ DuckDB itself is linked statically. libstdc++, libcurl and OpenSSL are linked dy
 
 Every database opened through the C API, which includes the Go bindings, has the five extensions loaded; nothing has to register them. The same holds from C++ with the default `DBConfig`. Only a C++ caller that sets `DBConfigOptions::load_extensions` to `false` opens a database without them. `INSTALL` and `LOAD` of any other extension fail with a Permission Error, because the bundle can't download extensions.
 
-### Testing a bundle
-[`test/smoke.sh`](test/smoke.sh) takes a tarball, the DuckDB version it must report, and a directory holding the matching `duckdb.h`. Each build uploads that header as the `duckdb-header-<arch>` artifact next to the tarball, so a CI build can be tested without a DuckDB checkout. On an x86_64 machine, in a fresh Amazon Linux 2023 container:
+### Building and testing
+[`.github/workflows/build-and-release.yml`](.github/workflows/build-and-release.yml) is the build recipe. Its build job runs in an `amazonlinux:2023` container: it installs gcc14 and CMake, clones DuckDB at the tag in `duckdb_version`, and runs DuckDB 1.5.x's own `make bundle-library`, which builds DuckDB with the extensions linked in and archives all their objects into `build/release/libduckdb_bundle.a`. To build locally, run the job's steps in that container on a host of the same architecture; [`AGENTS.md`](AGENTS.md#build-details-that-are-easy-to-break) lists the settings that matter. Then package the archive and smoke-test it as the workflow does, from the repository's root, where the job clones DuckDB into `duckdb/`:
 
 ```bash
-bundle_dir=$(mktemp -d)
-gh run download <run id> -n libduckdb-amd64-httpfs-parquet -n duckdb-header-amd64 -D "$bundle_dir"
-docker run --rm -v "$PWD":/repo:ro -v "$bundle_dir":/bundle:ro -w /repo \
-  public.ecr.aws/amazonlinux/amazonlinux:2023 bash -c '
-    dnf install -y gcc14 gcc14-c++ libcurl-devel openssl-devel binutils findutils tar xz python3 &&
-    . ./duckdb_version &&
-    CC=gcc14-gcc test/smoke.sh /bundle/libduckdb-amd64-httpfs-parquet/libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz "$DUCKDB_VER" /bundle/duckdb-header-amd64'
+mkdir -p pkg && cp duckdb/build/release/libduckdb_bundle.a pkg/
+tar -cJf libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz -C pkg .
+CC=gcc14-gcc test/smoke.sh libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz v1.5.6 duckdb/src/include
 ```
 
-On arm64, replace `amd64` with `arm64`. Artifacts are kept for one day. The tarball's artifact also holds `<tarball>.sha256`, recorded after the build's smoke test, which `sha256sum -c` checks. For a released tarball, pass the directory of DuckDB v1.5.6's `src/include` instead.
-
-To also run the fixture queries over HTTPS, pass `-e DUCKDB_TEST_HTTPFS_BASE_URL=<base URL>` to `docker run`, with a base URL as described in [`test/fixtures/README.md`](test/fixtures/README.md#hosting). The script first checks the host with `fixtures.py verify`, then runs the queries against it. Unset, the remote run is reported as not configured, which isn't a pass. `GITHUB_TOKEN`, when set, is sent only to this repository's files on `raw.githubusercontent.com` and never printed.
-
-The binary's output ends with `<n> checks passed`, and the script's with a summary: `local:` and `remote:` lines, plus a `rate-limited:` line when the host answered 429. It exits 0 if everything that ran passed, 3 if only the remote run failed and every failure was in the host or the network, and 1 otherwise. A line starting with `FAIL` says what went wrong:
-
-- `has no duckdb.h`: the third argument isn't the directory holding the header.
-- `is not a readable .tar.xz` or `the tarball holds`: the tarball is damaged, or the build packaged the wrong files.
-- `libduckdb_bundle.a is built for`: the tarball is for the other architecture, or the archive mixes objects from two.
-- `doesn't build against`: the header doesn't match the archive, or the archive lacks a symbol the program links, such as a dropped extension member. The compiler's error above it names the cause.
-- `needs <library>, which isn't on smoke.sh's allowlist`: consumers would need a new shared library at run time. If that is intended, add the library to the allowlist in `test/smoke.sh` and to [Linking](#linking).
-- `FAIL <query>`: DuckDB returned a wrong value or error. `<n> of <m> checks failed` follows. An error labeled `[host: ...]` or `[network: ...]` came from the HTTP server or the network: an HTTP error status, a host that ignores byte ranges, or a DNS, TLS, connection or timeout failure. In the remote run, the remaining fixture checks then stop.
-- `did not report any passed checks`: the binary exited without running its checks. If it crashed, its output stops after the last check that ran, with no `FAIL` line.
-- `the server logged no ... request`: an httpfs check passed without reading from the local server, or the fixtures' bearer token wasn't sent where it should have been.
-- `read the fixtures without the token scoped to them` or `sent the fixtures' token outside its scope`: the `TYPE http` secret's `SCOPE` didn't limit the token to the fixtures. The request lines above it are the ones at fault.
-- `GITHUB_TOKEN has a quote, a space or a control character`: the remote run didn't start, because the token can't go into an SQL string and an HTTP header.
-- Lines from `fixtures.py verify` before `== smoke --remote`: the host doesn't serve the committed fixtures with working byte ranges, so no query ran against it. [`test/fixtures/README.md`](test/fixtures/README.md#verifying-the-host) explains them.
-
-The Parquet fixtures for testing httpfs against a public HTTPS site, and how to regenerate, host and verify them, are described in [`test/fixtures/README.md`](test/fixtures/README.md). `.github/workflows/fixtures.yml` regenerates them on native arm64 and x86_64 runners when a PR or a push to this branch changes them.
-
-To build and invoke the Lambda example against a bundle you have, such as a CI artifact, see [`example/README.md`](example/README.md).
+On arm64, build with the arm64 `CXXFLAGS` from the workflow's matrix and use the `arm64` file name. [`test/README.md`](test/README.md) describes what the tests cover, which of them gate a release, how to run them on a CI artifact or a release without building, and how to read a failure. To build and invoke the Lambda example against a local bundle, see [`example/README.md`](example/README.md).
 
 ### Releasing
 A run for a tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload. `httpfs-remote`, `example` and `benchmark` run alongside the release, which waits for none of them. For `httpfs-remote`, see [The HTTPS check](#the-https-check). `example` builds and invokes the Go Lambda; a DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle. `benchmark` measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).

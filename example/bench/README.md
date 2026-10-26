@@ -98,7 +98,7 @@ When `DUCKDB_TEST_HTTPFS_BASE_URL` is set, each variant is also invoked once mor
 
 ## Running it
 
-You need Docker or Podman, the AWS SAM CLI, `jq` and Python 3, on a host of the bundle's architecture: x86_64 for `amd64`, aarch64 for `arm64`. Don't run the other architecture under emulation. Take a bundle tarball from a build run or a `v1.5.6_<n>` release (see the top-level README's [Testing a bundle](../../README.md#testing-a-bundle)), and from the repository's root:
+You need Docker or Podman, the AWS SAM CLI, `jq` and Python 3, on a host of the bundle's architecture: x86_64 for `amd64`, aarch64 for `arm64`. Don't run the other architecture under emulation. Take a bundle tarball from a build run or a `v1.5.6_<n>` release (see [Running the tests](../../test/README.md#running-the-tests)), and from the repository's root:
 
 ```bash
 BUNDLE_TARBALL=$HOME/duckdb-bundle/libduckdb_bundle-amd64-linux-httpfs-parquet.tar.xz \
@@ -106,7 +106,7 @@ SAMPLES=5 BENCH_WORK=$HOME/duckdb-bench \
   example/bench/run.sh
 ```
 
-`SAMPLES` defaults to 30. The results are in `$BENCH_WORK/results/`: `summary.md`, `summary.json`, `provenance.json`, the raw `samples.jsonl`, `warmup.jsonl` and `remote.jsonl`, the fixture server's `fixture-requests.jsonl` and `fixture-server.log`, the output of its checks before and after the samples, and the build and SAM logs. Set `DUCKDB_TEST_HTTPFS_BASE_URL` as in [The HTTPS check](../../README.md#the-https-check) to add the HTTPS check. It must be an `https://` URL, or `run.sh` exits before building anything, because the check is the benchmark's only test of TLS. `run.sh` extracts the bundle into `example/bench/libs/`, which git ignores.
+`SAMPLES` defaults to 30. The results are in `$BENCH_WORK/results/`: `summary.md`, `summary.json`, `provenance.json`, the raw `samples.jsonl`, `warmup.jsonl` and `remote.jsonl`, the fixture server's `fixture-requests.jsonl` and `fixture-server.log`, the output of its checks before and after the samples, and the build and SAM logs. Set `DUCKDB_TEST_HTTPFS_BASE_URL` as in [Real HTTPS](../../test/README.md#real-https) to add the HTTPS check. It must be an `https://` URL, or `run.sh` exits before building anything, because the check is the benchmark's only test of TLS. `run.sh` extracts the bundle into `example/bench/libs/`, which git ignores.
 
 `run.sh` starts the fixture server and its network with the `docker` command, and SAM starts the Lambda containers through the Docker API, so both must reach the same engine. On Fedora with rootless Podman, point SAM at a Podman API socket with SELinux labeling off, as [`example/AGENTS.md`](../AGENTS.md#podman) describes, and use a `docker` command that runs the same user's Podman. Podman's networks resolve container aliases through its DNS server, so the Lambda containers find `fixtures` there as they do on Docker. `run.sh` turns SELinux labeling off for the containers it starts itself, because they mount the fixtures from the checkout.
 
