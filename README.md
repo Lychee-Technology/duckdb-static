@@ -44,6 +44,7 @@ This repository utilizes a **GitHub Actions** workflow to ensure reliability and
 4.  **Release:** Checks that each tarball is the one its smoke test passed, then publishes the two tarballs and a `SHA256SUMS`, without marking the release Latest. See [Releasing](#releasing).
 5.  **Test over HTTPS:** Alongside the release, the `httpfs-remote` job runs the fixture queries on each new bundle against a public HTTPS copy of the fixtures. The release doesn't wait for it; see [The HTTPS check](#the-https-check).
 6.  **Test the example:** Alongside the release, builds the Lambda in [`example/`](example/) against each new bundle and invokes it with SAM, following `example/README.md`. The release doesn't wait for it either.
+7.  **Benchmark:** On tags and on runs on `duckdb-v1.5.x`, [benchmarks](example/bench/README.md) DuckDB's readiness and a first Parquet query over HTTP with each new bundle against `duckdb-go`'s stock library, under SAM. The release doesn't wait for it, and it never runs on PRs.
 
 ### Installation / Usage
 You don't need to build from source. simply:
@@ -99,7 +100,7 @@ The Parquet fixtures for testing httpfs against a public HTTPS site, and how to 
 To build and invoke the Lambda example against a bundle you have, such as a CI artifact, see [`example/README.md`](example/README.md).
 
 ### Releasing
-A run for a tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload. `httpfs-remote` and `example` run alongside the release, which waits for neither. For `httpfs-remote`, see [The HTTPS check](#the-https-check). `example` builds and invokes the Go Lambda; a DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
+A run for a tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload. `httpfs-remote`, `example` and `benchmark` run alongside the release, which waits for none of them. For `httpfs-remote`, see [The HTTPS check](#the-https-check). `example` builds and invokes the Go Lambda; a DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle. `benchmark` measures rather than tests; see [`example/bench/README.md`](example/bench/README.md).
 
 A release from this branch isn't marked Latest. Latest stays `main`'s newest DuckDB 2.0 release, whose tarballs have the same names, and which `main`'s example downloads as `releases/latest`. This branch's example downloads the newest `v1.5.6_<n>` release instead.
 
@@ -113,7 +114,7 @@ gh workflow run build-and-release.yml --ref refs/tags/<tag> -f overwrite-release
 
 Without the input, the dispatch still builds and tests the tag before the release job fails, so it can retest a release without changing it. Release jobs for the same tag run one at a time, so of two dispatches on a tag without a release, the second fails once the first has released. GitHub runs the workflow file at the dispatched ref, so tags up to `v1.5.6_0`, which predate this check, still overwrite their release on dispatch. A tag push isn't checked: it fills a release that someone created for the tag before pushing it. Prefer a new `_<n>` tag over overwriting, so that a published release's assets don't change under its users.
 
-A dispatch on a branch, `duckdb-v1.5.x` or another, builds and tests without releasing.
+A dispatch on a branch, `duckdb-v1.5.x` or another, builds and tests without releasing. It runs the benchmark on `duckdb-v1.5.x`, or on another branch with `-f benchmark=true`.
 
 ### The HTTPS check
 The `httpfs-remote` job runs `test/smoke.sh` on each architecture's tarball and header from the same run, in a fresh Amazon Linux 2023 container, with `DUCKDB_TEST_HTTPFS_BASE_URL` set to the repository variable of that name. The URL must be `https://`, because the job is the only check of TLS, and a URL on a GitHub host must also pin a full commit SHA on `raw.githubusercontent.com`, or the job fails before testing. How to read it:

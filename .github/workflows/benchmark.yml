@@ -1,0 +1,110 @@
+# Runs example/bench/run.sh on native arm64 and x86_64 runners: DuckDB
+# readiness and a first Parquet query over HTTP from a local fixture server,
+# with duckdb-go's stock library and with a bundle, under sam local invoke on
+# provided.al2023. run.sh starts the server and its Docker network and removes
+# both when it exits. example/bench/README.md says what it measures. Nothing
+# waits for it.
+#
+# build-and-release.yml calls it for the bundles it just built. A dispatch
+# benchmarks the bundles of an earlier build run instead, while its artifacts
+# last (one day).
+name: Benchmark
+
+on:
+  workflow_call:
+    inputs:
+      # A string, because a caller's number input can arrive as one. run.sh
+      # checks that it is a positive integer.
+      samples:
+        description: Samples per variant per architecture.
+        type: string
+        default: '30'
+  workflow_dispatch:
+    inputs:
+      build-run-id:
+        description: ID of the build-and-release.yml run whose bundles to benchmark.
+        type: string
+        required: true
+      samples:
+        description: Samples per variant per architecture.
+        type: number
+        default: 30
+
+permissions:
+  contents: read
+  # Only for downloading another run's artifacts in a dispatch.
+  actions: read
+
+jobs:
+  sam:
+    name: SAM (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            host: arm64
+            bundle: arm64
+          - runner: ubuntu-latest
+            host: x86_64
+            bundle: amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    env:
+      SAM_CLI_TELEMETRY: '0'
+      AWS_DEFAULT_REGION: us-east-1
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Test the summarizer
+        run: python3 example/bench/test_summarize.py
+
+      - name: Test run.sh's cleanup after a failed setup
+        run: python3 example/bench/test_run.py
+
+      - name: Download the bundle built in this run
+        if: ${{ !inputs.build-run-id }}
+        uses: actions/download-artifact@v7
+        with:
+          name: libduckdb-${{ matrix.bundle }}-httpfs-parquet
+          path: ${{ runner.temp }}/bundle
+
+      - name: Download the bundle built in run ${{ inputs.build-run-id }}
+        if: ${{ inputs.build-run-id }}
+        uses: actions/download-artifact@v7
+        with:
+          name: libduckdb-${{ matrix.bundle }}-httpfs-parquet
+          path: ${{ runner.temp }}/bundle
+          run-id: ${{ inputs.build-run-id }}
+          github-token: ${{ github.token }}
+
+      # The build recorded this hash after its smoke test.
+      - name: Check the bundle
+        working-directory: ${{ runner.temp }}/bundle
+        run: sha256sum -c libduckdb_bundle-${{ matrix.bundle }}-linux-httpfs-parquet.tar.xz.sha256
+
+      - name: Tools
+        run: |
+          uname -m
+          docker version --format '{{.Server.Version}} {{.Server.Arch}}'
+          sam --version
+
+      - name: Benchmark
+        env:
+          BUNDLE_TARBALL: ${{ runner.temp }}/bundle/libduckdb_bundle-${{ matrix.bundle }}-linux-httpfs-parquet.tar.xz
+          SAMPLES: ${{ inputs.samples }}
+          BENCH_WORK: ${{ runner.temp }}/bench
+          DUCKDB_TEST_HTTPFS_BASE_URL: ${{ vars.DUCKDB_TEST_HTTPFS_BASE_URL }}
+        run: example/bench/run.sh
+
+      - name: Upload the results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-${{ matrix.bundle }}
+          path: ${{ runner.temp }}/bench/results/
+          retention-days: 90
+          if-no-files-found: ignore
