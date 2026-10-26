@@ -32,9 +32,9 @@ The bundle is built on Amazon Linux 2023 and includes these extensions:
 ## How It Works
 
 ### Automated Build Process
-This repository utilizes a **GitHub Actions** workflow to ensure reliability and transparency:
+A GitHub Actions workflow builds and publishes the bundle:
 1.  **Trigger:** a `v*` tag push builds and releases; see [Releasing](#releasing) for the tag names it accepts. A PR into `duckdb-v1.5.x`, or a push to it, that changes `duckdb_version`, `test/` or the workflow, other than in Markdown files, builds and tests its own bundles without releasing.
-2.  **Build:** Compiles a static bundle of DuckDB + Extensions on Amazon Linux 2023.
+2.  **Build:** Compiles DuckDB and its extensions into a static library on Amazon Linux 2023, once for arm64 and once for amd64.
 3.  **Smoke test:** Checks that each tarball holds exactly `libduckdb_bundle.a`, built for the runner's architecture. Then links [`test/smoke.c`](test/smoke.c) against it with the `duckdb.h` of the DuckDB checkout it was built from, and checks the result of a query for every extension, including httpfs reads over HTTP and S3 from a local server, and that installing or loading any other extension fails. It also checks core SQL, nested JSON, local Parquet and a reopened database file, that those checks left no other extension installed or loaded, and the queries of the [Parquet fixtures](test/fixtures/README.md) read through httpfs from the local server. It fails if a check fails, if none ran, or if the test binary needs a shared library other than the ones listed under [Linking](#linking). Only a tarball that passes is uploaded, with the sha256 recorded right after the test.
 4.  **Release:** Checks that each tarball is the one its smoke test passed, then publishes the two tarballs and a `SHA256SUMS`, without marking the release Latest. See [Releasing](#releasing).
 5.  **Test over HTTPS:** Alongside the release, the `httpfs-remote` job runs the fixture queries on each new bundle against a public HTTPS copy of the fixtures. The release doesn't wait for it; see [The HTTPS check](#the-https-check).
@@ -42,11 +42,11 @@ This repository utilizes a **GitHub Actions** workflow to ensure reliability and
 7.  **Benchmark:** On tags and on runs on `duckdb-v1.5.x`, [benchmarks](example/bench/README.md) DuckDB's readiness and a first Parquet query over HTTP with each new bundle against `duckdb-go`'s stock library, under SAM. The release doesn't wait for it, and it never runs on PRs.
 
 ### Installation / Usage
-You don't need to build from source. simply:
+You don't need to build from source:
 1.  Open the newest `v1.5.6_<n>` release, currently [**v1.5.6_0**](https://github.com/Lychee-Technology/duckdb-static/releases/tag/v1.5.6_0). The release marked Latest is `main`'s DuckDB 2.0 build, and its tarballs have the same names, so choose the release by its tag.
-2.  Download the `.tar.xz` file for the corresponding arch.
+2.  Download the `.tar.xz` file for your architecture.
 3.  From `v1.5.6_1` on, check it against the release's `SHA256SUMS` with `sha256sum -c --ignore-missing SHA256SUMS`.
-4.  Include the binary in your serverless deployment package. [`example/`](example/) links it into a Go Lambda.
+4.  Link the `libduckdb_bundle.a` inside it into your function at build time. [`example/`](example/) does this for a Go Lambda.
 
 The bundle is compiled for `x86-64-v3` on amd64 (Intel Haswell, AMD Zen, or newer) and for `armv8.2-a+crypto+fp16+dotprod+lse` on arm64 (AWS Graviton2 or newer). On older CPUs it crashes with an illegal-instruction error. Both AWS Lambda architectures meet these requirements.
 
