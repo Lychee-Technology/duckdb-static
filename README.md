@@ -1,29 +1,24 @@
 # DuckDB Static Library
 
-> **A pre-compiled, static bundle of DuckDB optimized for serverless environments (AWS Lambda, Google Cloud Functions, etc.).**
+> A precompiled static bundle of DuckDB optimized for serverless environments (AWS Lambda, Google Cloud Functions, etc.).
 
 This is the `duckdb-v1.5.x` maintenance branch, which builds DuckDB 1.5.6. `main` builds DuckDB 2.0. [docs/backport-1.5.x.md](docs/backport-1.5.x.md) lists how the two differ and what this branch takes from `main`.
 
 
 ## Why DuckDB Static Library?
 
-Running [DuckDB](https://duckdb.org/) in serverless environments can be challenging due to initialization overhead and dependency management. This project solves these pain points by providing a strictly bundled static library.
+In serverless environments, [DuckDB](https://duckdb.org/) adds initialization overhead to every cold start, and its extensions have to be managed as separate dependencies. This project bundles DuckDB and its extensions into one static library.
 
-### ️ Blazing Fast Cold Starts
-**Cold start time is critical.**
-When using dynamic loading, initialization can be slow. By using a static bundle, all necessary components are pre-compiled into a single package.
-* **Performance Gain:** Reduces initialization time from **>4s** down to **~0.3s**.
-* **Result:** Significantly improved responsiveness for Lambda/Cloud Functions relying on DuckDB and its extensions.
+### Fast Cold Starts
+Loading extensions dynamically can push initialization past 4s. The static bundle has everything precompiled, and initialization takes about 0.3s.
 
-### Robust & Portable ("Batteries Included")
-Using DuckDB with extensions in ephemeral environments often leads to runtime errors due to missing binaries or version mismatches.
-* **Zero Dependencies:** No need to download extensions at runtime.
-* **Consistency:** Ensures that all core components are version-matched and guaranteed to work, simplifying deployment across different systems.
+### Batteries Included
+Using DuckDB with extensions in ephemeral environments often leads to runtime errors due to missing binaries or version mismatches. The extensions are compiled into the bundle, so nothing is downloaded at runtime. DuckDB and the extensions come from one build, so their versions always match.
 
 
 ## What's Included?
 
-This bundle is built on **Amazon Linux 2023** and comes pre-packaged with the most essential extensions:
+The bundle is built on Amazon Linux 2023 and includes these extensions:
 
 | Extension | Description                                                |
 | :-------- | :--------------------------------------------------------- |
@@ -100,16 +95,16 @@ The `httpfs-remote` job runs `test/smoke.sh` on each architecture's tarball and 
 - **Skipped:** the variable was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
 - **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.
 - **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
-- **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug.
+- **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
 
 The release doesn't wait for `httpfs-remote`, as `main` decided in [#28](https://github.com/Lychee-Technology/duckdb-static/issues/28), and this branch keeps that policy. A bundle that fails only over real HTTPS can therefore still be published, with the failure showing in its run. Making the job required would mean adding it to the release job's `needs`, and making it fail rather than skip when the variable is unset, because a job that needs a skipped job is skipped too.
 
 
 ## Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
+Pull requests are welcome.
 
 
 ## Disclaimer
 
-This project is an independent open-source initiative and is **not** affiliated with, endorsed by, or associated with the DuckDB Foundation or DuckDB Labs.
-**DuckDB** is a trademark of the **DuckDB Foundation**. All other trademarks, logos, and service marks used in this repository are the property of their respective owners.
+This project is an independent open-source initiative and is not affiliated with, endorsed by, or associated with the DuckDB Foundation or DuckDB Labs.
+DuckDB is a trademark of the DuckDB Foundation. All other trademarks, logos, and service marks used in this repository are the property of their respective owners.
