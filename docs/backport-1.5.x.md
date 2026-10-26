@@ -62,7 +62,7 @@ What does carry over is checked by one ordinary build: the five extensions repor
 
 ## Commit mapping
 
-Main's commits after `v1.5.6_0`, oldest first. "Take" means port unchanged, "adapt" means port with the changes listed, and "skip" means don't port. "Ported in" names the squash commit on this branch, and its PR, that did it. #57, the PR for #45, has no commit there until it merges. Every PR in that column targeted `duckdb-v1.5.x`; none changed `main`.
+Main's commits after `v1.5.6_0`, oldest first. "Take" means port unchanged, "adapt" means port with the changes listed, and "skip" means don't port. "Ported in" names the squash commit on this branch, and its PR, that did it. #57, the PR for #45, appears without a SHA: its commit adds this column, and a commit can't record its own SHA. On this branch, `git log --diff-filter=A --format=%h -- test/README.md` prints it. Every PR in that column targeted `duckdb-v1.5.x`; none changed `main`.
 
 | Commit | PR | What it adds on main | Decision | Ported in | Changes for 1.5.x |
 |---|---|---|---|---|---|
