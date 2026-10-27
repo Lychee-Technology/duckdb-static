@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Guidance for `example/` on the `duckdb-v1.5.x` branch, which builds DuckDB 1.5.6. The repository's rules apply here too: build only for the host's own architecture, never the other one under emulation, and sign off commits (`git commit -s`).
+Guidance for `example/` on the `duckdb-v1.5.x` branch, which builds DuckDB 1.5.6. The repo-wide rules in `../AGENTS.md` still apply, including native-arch-only local builds and DCO sign-off.
 
 This is a Go Lambda (AWS SAM, `provided.al2023`) that links a released `libduckdb_bundle.a` and queries a parquet file shipped with the function. `README.md` is the user-facing version of this file. When the Makefile, Dockerfile, template, or query changes, update it too. CI runs the README's commands, so a README that no longer matches the example fails CI (see [CI](#ci)).
 
