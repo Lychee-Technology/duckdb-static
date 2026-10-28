@@ -107,6 +107,7 @@ How to read `httpfs-remote`:
 
 - **Skipped:** `DUCKDB_TEST_HTTPFS_BASE_URL` was unset when the run started. Nothing was tested over HTTPS, which isn't a pass.
 - **Passed:** every fixture query gave its expected result over HTTPS, on the tarball whose sha256 the job summary names.
+- **Failed with `Not HTTPS` or `Unpinned base URL`** (exit 1, before testing): the variable isn't an `https://` URL, or is a GitHub URL that doesn't pin a full commit SHA on `raw.githubusercontent.com`. Nothing was tested. Fix the variable and start a new run.
 - **Failed with `Host or network failure`** (exit 3): GitHub or the network failed, and no failed check points at the bundle. A `Rate-limited` warning means GitHub answered `429`. This says nothing against the release. Re-run the failed jobs to get a result while the run's artifacts are kept, which is one day.
 - **Failed with `Bundle or configuration failure`** (exit 1): a fixture query gave a wrong result over HTTPS, or the base URL or token can't be used. The same queries passed against the local server in the build job, so a wrong result points at something only real HTTPS exercises, such as TLS. Treat it as a bundle bug. A release that is already published keeps its assets, and the fix ships under the next `_<n>` tag.
 
