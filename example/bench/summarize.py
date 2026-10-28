@@ -315,7 +315,7 @@ def summarize(results, manifest):
     elif reasons["rejected"]:
         status, why = "invalid samples", reasons["rejected"]
     else:
-        status, why = "valid", []
+        status, why = "invalid", []
 
     summary = {
         "status": status,
