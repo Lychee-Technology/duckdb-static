@@ -1,3 +1,4 @@
+# Throwaway change for #63 validation.
 # Runs example/bench/run.sh on native arm64 and x86_64 runners: DuckDB
 # readiness and a first Parquet query over HTTP from a local fixture server,
 # with duckdb-go's stock library and with a bundle, under sam local invoke on
