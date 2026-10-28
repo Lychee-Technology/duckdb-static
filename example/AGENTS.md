@@ -52,7 +52,7 @@ The job pulls three images with no retries. From ECR Public it pulls `amazonlinu
 
 ## Benchmark
 
-`bench/` times DuckDB's readiness and a first Parquet query over HTTP in a Lambda process, with the bundle and with `duckdb-go`'s stock library. `bench/README.md` has what it measures and how to run it. It is a second main package in this module so that both variants always build with the `duckdb-go` in this `go.mod`, but it has its own Dockerfile, template and scripts and changes nothing the example builds. Because it lives under `example/`, a PR that changes it also runs `example.yml`. `benchmark-tests.yml` runs its self-tests on such a PR; the benchmark itself never runs on one.
+`bench/` times DuckDB's readiness and a first Parquet query over HTTP in a Lambda process, with the bundle and with `duckdb-go`'s stock library. `bench/README.md` has what it measures and how to run it. It is a second main package in this module so that both variants always build with the `duckdb-go` in this `go.mod`, but it has its own Dockerfile, template and scripts and changes nothing the example builds. Because it lives under `example/`, a PR that changes it also runs `example.yml`. `benchmark-tests.yml` runs its self-tests on such a PR unless it changes only Markdown; the benchmark itself never runs on one.
 
 The stock library is `github.com/duckdb/duckdb-go-bindings/lib/linux-<arch>` at the version `go.mod` requires: static archives, with no `provenance.json`. When `go.mod` and `duckdb_version` name different DuckDB versions, the benchmark reports `incomparable` until `go.mod` is bumped. Its stock `httpfs` comes from `extensions.duckdb.org` for the version in `duckdb_version`, so a DuckDB release that DuckDB hasn't published `httpfs` for is `incomparable` too.
 
