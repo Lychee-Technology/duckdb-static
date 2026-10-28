@@ -30,6 +30,7 @@ import collections
 import json
 import math
 import os
+import re
 import statistics
 import sys
 import urllib.parse
@@ -51,18 +52,6 @@ PRIMARY = (
 )
 SECONDARY = (("bootstrap_to_main_ms", "Launcher exec to `main`"),)
 METRICS = PRIMARY + SECONDARY
-
-# Error text that points at the host or the network rather than the bundle.
-NETWORK_ERRORS = (
-    "could not resolve",
-    "could not connect",
-    "connection refused",
-    "connection reset",
-    "timed out",
-    "timeout",
-    "http 429",
-    "http 5",
-)
 
 
 def load_jsonl(path):
@@ -239,6 +228,35 @@ def http_stats(responses, requests):
     }
 
 
+def host_layer(error):
+    """Names the layer the HTTPS check's error comes from when it is the
+    network or the HTTP server, as test/smoke.c's host_layer() does, or returns
+    None when the error points at the variant. httpfs raises an HTTP error
+    status as an HTTP Error, and a transport failure as an IO Error with the
+    client's description and "error for HTTP". The error type decides, and the
+    message only picks the label. duckdb-go keeps the "<type> Error: " prefix
+    in the error's text, after main.go's "query: ", so only the query's errors
+    can be the host's."""
+    m = re.match(r"query: (\w+) Error: ", error)
+    if not m:
+        return None
+    message = error[m.end():]
+    if m[1] == "HTTP":
+        # "(HTTP 404 Not Found)" or "returned HTTP 404"
+        status = re.search(r"HTTP (\d{3})(?!\d)", message)
+        if status:
+            return f"host: HTTP {status[1]}"
+        # httpfs's error for a host that answers a ranged GET with the whole file
+        return "host: byte ranges" if "range" in message else "host: HTTP"
+    if m[1] == "IO" and " error for HTTP " in message:
+        layer = ("DNS" if "resolve" in message
+                 else "TLS" if "SSL" in message
+                 else "timeout" if "Timeout" in message
+                 else "connection")
+        return f"network: {layer}"
+    return None
+
+
 def remote_outcome(record):
     r = record.get("response")
     if not isinstance(r, dict):
@@ -246,8 +264,9 @@ def remote_outcome(record):
     error = r.get("error") or r.get("errorMessage") or ""
     if not error and r.get("result_ok"):
         return "passed"
-    if any(s in error.lower() for s in NETWORK_ERRORS):
-        return f"host or network failure: {error}"
+    layer = host_layer(error)
+    if layer:
+        return f"host or network failure ({layer}): {error}"
     if error:
         return f"failed: {error}"
     return f"failed: sum(id) was {r.get('result')}, not {REMOTE_EXPECTED_SUM}"
