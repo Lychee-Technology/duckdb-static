@@ -92,9 +92,23 @@ jobs:
         with:
           persist-credentials: false
 
+      # A tag runs the workflow file of the commit it points at, so a 1.5.x tag
+      # on a commit of main would publish this commit's DuckDB under that tag.
+      # Failing here, before the build, also skips the release. The smoke test
+      # then checks that the bundle reports DUCKDB_VER.
       - name: Set version variables
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
         run: |
           source ./duckdb_version
+          if [ "$REF_TYPE" = tag ]; then
+            if [[ ! $TAG =~ ^v[0-9.]+_[0-9]+$ || ${TAG%_*} != "$DUCKDB_VER" ]]; then
+              echo "::error title=Tag doesn't match duckdb_version::Tag $TAG must be ${DUCKDB_VER}_<n>, because the commit builds DuckDB $DUCKDB_VER."
+              exit 1
+            fi
+          fi
           echo "DUCKDB_VER=$DUCKDB_VER" >> $GITHUB_ENV
 
       - name: Clone DuckDB
