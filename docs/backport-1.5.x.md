@@ -81,6 +81,7 @@ Main's commits after `v1.5.6_0`, oldest first. "Take" means port unchanged, "ada
 | `e612c28` | #30 | PR builds when build or test inputs change | Adapt | `fc81f34` (#51) | Fires for PRs into this branch, and for pushes to it with the same paths, so the branch's head is rebuilt after a merge. No `scripts/` path: 1.5.x has none |
 | `c382af9` | #34 | SAM benchmark of the bundle against duckdb-go's stock library; the v2 fixture; `serve.py`, extracted from `smoke.sh` | Adapt | `c69105e` (#48), `0ca20bf` (#49), `057829e` (#55) | #40 took its changes under `test/fixtures/`; #41 switched `smoke.sh` to `serve.py`. #43 ported the benchmark: stock module path, missing `provenance.json`, the job's `if` allowing this branch. It also checks that both executables link DuckDB statically and that the samples report `duckdb_version`'s DuckDB, and compares source IDs by prefix |
 | `a2a311b` | #35 | Records that `httpfs-remote` stays non-blocking | Take | `0ca20bf` (#49), `0ba4902` (#57) | Same policy here. #41 recorded it in the README's "The HTTPS check"; #45 added the rest of its README hunk and its `AGENTS.md` hunk |
+| Not merged yet | #61 | `persist-credentials: false` on every checkout, and the rule in `AGENTS.md` (#54) | Adapt | #62 | Made on both branches at once, so neither commit existed when this row was written. `example.yml` and `benchmark.yml` already had it here (#53, #55), so only the build, release and fixtures checkouts change. The `AGENTS.md` sentence is the same, placed in this branch's "Release flow" |
 
 ### Not ported
 
