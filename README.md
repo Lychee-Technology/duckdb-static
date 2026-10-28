@@ -88,6 +88,8 @@ On arm64, use the arm64 `CXXFLAGS` from the workflow's matrix and the `arm64` fi
 ### Releasing
 A run for a `v*` tag publishes its release only if the build job passed on both architectures, smoke test included. Before uploading, the release job checks each tarball against the sha256 its build job recorded right after the smoke test, and fails if one differs or is missing. It publishes those records as `SHA256SUMS`, whose lines match the `Smoke-tested:` line in each build job's summary. Nothing is rebuilt between the test and the upload.
 
+Tag a commit of `main` as `v<DuckDB version>_<n>`, with the DuckDB version `duckdb_version` sets, such as `v2.0.0_1`. `<n>` counts rebuilds of that version. On any other tag the build job fails before compiling, and nothing is released. GitHub runs the workflow file of the commit a tag points at, so without the check a 1.5.x tag such as `v1.5.6_1` on a commit of `main` would publish a DuckDB 2.0 bundle under that name and mark it Latest. DuckDB 1.5.x releases are tagged on commits of the `duckdb-v1.5.x` branch, whose workflow checks its own tags.
+
 Three jobs run alongside the release, and the release waits for none of them:
 
 - `example` builds and invokes the Go Lambda. A DuckDB release can ship before a `duckdb-go` version that matches it, so a failed example doesn't hold back the bundle.
