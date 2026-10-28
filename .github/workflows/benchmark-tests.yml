@@ -1,0 +1,52 @@
+# Runs the benchmark's self-tests, test_summarize.py and test_run.py, on native
+# arm64 and x86_64 runners. They need Python 3, Bash and jq, but no bundle, SAM
+# or container engine, so they run on PRs that change the benchmark. The
+# benchmark itself never runs on a PR; benchmark.yml runs these tests again
+# before run.sh. test_run.py reads duckdb_version.
+name: Benchmark tests
+
+on:
+  pull_request:
+    paths:
+      - 'example/bench/**'
+      - '.github/workflows/benchmark.yml'
+      - '.github/workflows/benchmark-tests.yml'
+      - 'duckdb_version'
+      - '!**/*.md'
+  push:
+    branches: [duckdb-v1.5.x]
+    paths:
+      - 'example/bench/**'
+      - '.github/workflows/benchmark.yml'
+      - '.github/workflows/benchmark-tests.yml'
+      - 'duckdb_version'
+      - '!**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Self-tests (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04-arm
+            host: arm64
+          - runner: ubuntu-latest
+            host: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Test the summarizer
+        run: python3 example/bench/test_summarize.py
+
+      - name: Test run.sh's cleanup after a failed setup
+        run: python3 example/bench/test_run.py
