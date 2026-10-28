@@ -48,5 +48,7 @@ jobs:
       - name: Test the summarizer
         run: python3 example/bench/test_summarize.py
 
+      # Runs even when the summarizer's tests fail, so one run reports both.
       - name: Test run.sh's cleanup after a failed setup
+        if: ${{ !cancelled() }}
         run: python3 example/bench/test_run.py
