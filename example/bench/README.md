@@ -83,7 +83,7 @@ The Lambda containers can reach the internet through the run's network, as the H
 
 `run.sh` exits 0 only for `valid`. There is no performance threshold, and none should be added until the variance across runs is known.
 
-When `DUCKDB_TEST_HTTPFS_BASE_URL` is set, each variant is also invoked once more to read `v1/multi_row_group.parquet` over HTTPS from that public host. That check is untimed and separate from the samples, and its outcome doesn't change the status: it tests real TLS and public hosting, which the local server can't, and its failure says nothing about the local samples.
+When `DUCKDB_TEST_HTTPFS_BASE_URL` is set, each variant is also invoked once more to read `v1/multi_row_group.parquet` over HTTPS from that public host. That check is untimed and separate from the samples, and its outcome doesn't change the status: it tests real TLS and public hosting, which the local server can't, and its failure says nothing about the local samples. As in `test/smoke.c`, the summary marks a failure as the host's or the network's by DuckDB's error type: an HTTP error status, or a transport failure such as DNS, TLS or a timeout.
 
 ## Running it
 
